@@ -694,7 +694,7 @@ class Game {
         this.camera.lookAt(lookAtPosition);
     }
 
-    updateKart() {
+    updateKart(deltaTime) { // Accept deltaTime as an argument
         // Only allow updates if the race is active
         if (this.gameState !== 'racing') {
             // Still update camera and render, but don't move kart
@@ -1625,7 +1625,7 @@ class Game {
         // Only run game logic if racing
         if (this.gameState === 'racing') {
             this.updateItemBoxes(deltaTime); // Update item box respawn timers
-            this.updateKart();
+            this.updateKart(deltaTime); // Pass deltaTime to updateKart
             this.updateBots(deltaTime);
             this.checkKartCollisions();
             this.checkItemBoxCollisions(); // Check for getting items
