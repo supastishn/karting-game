@@ -41,7 +41,7 @@ class Game {
         // Mini-turbo parameters
         this.driftTime = 0;
         this.miniTurboStage = 0; // 0: none, 1: blue spark, 2: orange spark, 3: purple spark
-        this.miniTurboThresholds = [0, 1.2, 2.0, 3.0]; // Time thresholds for each stage
+        this.miniTurboThresholds = [0, 1.0, 1.8, 2.8]; // Lowered thresholds slightly (was 1.2, 2.0, 3.0)
         this.miniTurboBoostDurations = [0.8, 1.5, 2.5]; // Duration in seconds for each boost level
         this.boostMultiplier = 1.5; // Fixed boost multiplier for all levels
         this.boostTime = 0;
@@ -1091,7 +1091,7 @@ class Game {
                 bot.isDrifting = true;
                 bot.driftTime = 0;
                 bot.miniTurboStage = 0;
-                // console.log(`Bot ${this.bots.indexOf(bot)} started drifting`);
+                console.log(`Bot ${this.bots.indexOf(bot)} started drifting`); // Uncommented log
             } else if (bot.isDrifting && Math.abs(angleDifference) < driftTurnThreshold * 0.8) { // Stop if angle straightens out a bit
                 // Stop drifting - check for boost release
                 bot.isDrifting = false;
@@ -1099,7 +1099,7 @@ class Game {
                     bot.boosting = true;
                     // Use player's boost durations for now
                     bot.boostTime = this.miniTurboBoostDurations[bot.miniTurboStage - 1];
-                    // console.log(`Bot ${this.bots.indexOf(bot)} released boost stage ${bot.miniTurboStage}`);
+                    console.log(`Bot ${this.bots.indexOf(bot)} released boost stage ${bot.miniTurboStage}`); // Uncommented log
                 }
                 bot.driftTime = 0;
                 bot.miniTurboStage = 0;
@@ -1125,7 +1125,7 @@ class Game {
                 bot.boostTime -= deltaTime;
                 if (bot.boostTime <= 0) {
                     bot.boosting = false;
-                    // console.log(`Bot ${this.bots.indexOf(bot)} boost ended`);
+                    console.log(`Bot ${this.bots.indexOf(bot)} boost ended`); // Uncommented log
                 }
             }
 
