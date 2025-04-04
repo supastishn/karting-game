@@ -1130,13 +1130,22 @@ class Game {
 
     // Helper to calculate distance to the center of the next checkpoint
     calculateDistanceToNextCheckpoint(currentPosition, nextCheckpointIndex) {
-        if (!this.checkpoints || this.checkpoints.length === 0) return Infinity;
+        // console.log(`Calculating distance for pos: (${currentPosition.x.toFixed(2)}, ${currentPosition.z.toFixed(2)}) to checkpoint index: ${nextCheckpointIndex}`);
+        if (!this.checkpoints || this.checkpoints.length === 0) {
+            // console.log("  -> No checkpoints defined, returning Infinity");
+            return Infinity;
+        }
         const targetCheckpoint = this.checkpoints[nextCheckpointIndex];
-        if (!targetCheckpoint) return Infinity;
+        if (!targetCheckpoint) {
+            // console.log(`  -> Checkpoint index ${nextCheckpointIndex} not found, returning Infinity`);
+            return Infinity;
+        }
         // Use XZ distance for ranking to ignore hop height
         const dx = currentPosition.x - targetCheckpoint.position.x;
         const dz = currentPosition.z - targetCheckpoint.position.z;
-        return Math.sqrt(dx * dx + dz * dz);
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        // console.log(`  -> Target: (${targetCheckpoint.position.x.toFixed(2)}, ${targetCheckpoint.position.z.toFixed(2)}), dx: ${dx.toFixed(2)}, dz: ${dz.toFixed(2)}, Distance: ${distance.toFixed(2)}`);
+        return distance;
     }
 
     // --- Item Box and Banana Updates ---
