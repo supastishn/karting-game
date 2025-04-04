@@ -162,25 +162,26 @@ class Game {
         // Define start parameters based on the *new* first checkpoint (index 0)
         const newStartCheckpoint = this.checkpoints[0]; // Get the data for the new checkpoint 1
         const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
-        const startOffsetDistance = 3.0; // How far behind the line to start
+        const startOffsetDistance = 3.0; // How far *after* the line to start
 
-        // Calculate the direction vector opposite to the starting rotation
-        const behindVector = new THREE.Vector3(
-            -Math.sin(startParams.rotation),
+        // Calculate the direction vector *along* the starting rotation
+        const forwardVector = new THREE.Vector3(
+            Math.sin(startParams.rotation),
             0,
-            -Math.cos(startParams.rotation)
+            Math.cos(startParams.rotation)
         );
 
-        // Calculate the final starting position
+        // Calculate the final starting position (just after the checkpoint)
         const finalStartPosition = new THREE.Vector3(
-            startParams.x + behindVector.x * startOffsetDistance,
+            startParams.x + forwardVector.x * startOffsetDistance,
             0.25, // Kart height
-            startParams.z + behindVector.z * startOffsetDistance
+            startParams.z + forwardVector.z * startOffsetDistance
         );
 
-        // Position kart slightly behind the start/finish line
+        // Position kart slightly after the checkpoint
         this.kart.position.copy(finalStartPosition);
-        this.kart.rotation.y = startParams.rotation;
+        // Rotate kart 180 degrees from checkpoint rotation
+        this.kart.rotation.y = startParams.rotation + Math.PI;
 
         // Position camera initially behind the kart
         this.updateCamera(); // Call updateCamera once to set initial position based on kart
@@ -311,24 +312,27 @@ class Game {
         // Use the starting parameters of the *new* first checkpoint (index 0)
         const newStartCheckpoint = this.checkpoints[0]; // Get the data for the new checkpoint 1
         const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
-        const behindVector = new THREE.Vector3(
-            -Math.sin(startParams.rotation), 0, -Math.cos(startParams.rotation)
+        // Calculate the forward vector *along* the starting rotation
+        const forwardVector = new THREE.Vector3(
+            Math.sin(startParams.rotation), 0, Math.cos(startParams.rotation)
         );
+        // Calculate the side vector (perpendicular to forward)
         const sideVector = new THREE.Vector3(
-            Math.cos(startParams.rotation), 0, -Math.sin(startParams.rotation)
+            forwardVector.z, 0, -forwardVector.x
         );
+        const startRotation = startParams.rotation + Math.PI; // Add 180 degrees rotation
 
         for (let i = 0; i < numberOfBots; i++) {
             const botMaterial = new THREE.MeshBasicMaterial({ color: botColors[i % botColors.length] });
             const botMesh = new THREE.Mesh(botGeometry, botMaterial);
 
-            // Calculate staggered starting position
+            // Calculate staggered starting position (just after the checkpoint)
             const botStartPosition = new THREE.Vector3(startParams.x, 0.25, startParams.z)
-                .addScaledVector(behindVector, startOffset + i * 1.5) // Stagger depth
+                .addScaledVector(forwardVector, startOffset + i * 1.5) // Stagger depth *after* line
                 .addScaledVector(sideVector, (i % 2 === 0 ? 1 : -1) * spacing * Math.ceil((i+1)/2)); // Stagger side
 
             botMesh.position.copy(botStartPosition);
-            botMesh.rotation.y = startParams.rotation; // Start facing forward
+            botMesh.rotation.y = startRotation; // Start facing the new direction (180 deg turn)
 
             this.scene.add(botMesh);
 
