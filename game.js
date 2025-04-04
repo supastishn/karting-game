@@ -181,11 +181,20 @@ class Game {
 
             this.scene.add(botMesh);
 
+            // Assign unique stats to each bot
+            const botStats = {
+                maxSpeed: this.maxSpeed * (0.65 + Math.random() * 0.2), // 65% to 85% of player max speed
+                acceleration: this.acceleration * (0.8 + Math.random() * 0.4), // Varying acceleration
+                turnRate: this.turnSpeed * (1.5 + Math.random() * 1.0), // Faster turning than player base, with variation
+                targetOffset: (Math.random() - 0.5) * 15 // Aim +/- 7.5 units sideways from checkpoint center
+            };
+
             this.bots.push({
                 mesh: botMesh,
-                speed: this.maxSpeed * (0.7 + Math.random() * 0.15), // Slightly slower than player, with variation
-                targetCheckpointIndex: 1, // Start heading towards the second checkpoint (index 1)
-                currentCheckpointIndex: 0 // They start having 'passed' checkpoint 0
+                speed: 0, // Start stationary
+                targetCheckpointIndex: 1,
+                currentCheckpointIndex: 0,
+                stats: botStats // Store the unique stats
             });
         }
     }
@@ -753,35 +762,78 @@ class Game {
     }
 
     updateBots() {
-        const arrivalThreshold = 2.0; // How close the bot needs to be to the checkpoint
+        const arrivalThreshold = 3.0; // How close the bot needs to be to the *actual* checkpoint center
+        const lookAheadDistance = 10.0; // How far ahead the bot looks for steering
 
         this.bots.forEach(bot => {
-            if (!this.checkpoints || this.checkpoints.length === 0) return; // Ensure checkpoints are loaded
+            if (!this.checkpoints || this.checkpoints.length < 2) return; // Need at least 2 checkpoints
 
-            const targetCheckpoint = this.checkpoints[bot.targetCheckpointIndex];
-            if (!targetCheckpoint) return; // Ensure target exists
+            const currentCheckpointIndex = bot.currentCheckpointIndex;
+            const targetCheckpointIndex = bot.targetCheckpointIndex;
+            const nextTargetCheckpointIndex = (targetCheckpointIndex + 1) % this.totalCheckpoints;
 
-            const targetPosition = targetCheckpoint.position.clone();
-            targetPosition.y = bot.mesh.position.y; // Keep bot on the ground plane for movement calculation
+            const currentCheckpoint = this.checkpoints[currentCheckpointIndex];
+            const targetCheckpoint = this.checkpoints[targetCheckpointIndex];
+            const nextTargetCheckpoint = this.checkpoints[nextTargetCheckpointIndex];
 
-            const direction = targetPosition.clone().sub(bot.mesh.position);
-            const distance = direction.length();
+            if (!targetCheckpoint || !nextTargetCheckpoint) return; // Ensure targets exist
 
-            // Check if bot reached the checkpoint
-            if (distance < arrivalThreshold) {
-                bot.currentCheckpointIndex = bot.targetCheckpointIndex;
-                bot.targetCheckpointIndex = (bot.targetCheckpointIndex + 1) % this.totalCheckpoints;
+            // --- Target Calculation for Curved Path ---
+            // 1. Vector from current bot position to target checkpoint center
+            const vecToTargetCenter = targetCheckpoint.position.clone().sub(bot.mesh.position);
+            vecToTargetCenter.y = 0; // Ignore height difference for pathing
+            const distanceToTargetCenter = vecToTargetCenter.length();
+
+            // 2. Vector representing the direction from target to the *next* target (approximates exit direction)
+            const targetExitDirection = nextTargetCheckpoint.position.clone().sub(targetCheckpoint.position);
+            targetExitDirection.y = 0;
+            targetExitDirection.normalize();
+
+            // 3. Calculate a sideways offset vector (perpendicular to exit direction)
+            const sidewaysOffsetVector = new THREE.Vector3(targetExitDirection.z, 0, -targetExitDirection.x);
+
+            // 4. Calculate the actual target point with the bot's offset
+            const offsetTargetPosition = targetCheckpoint.position.clone()
+                .addScaledVector(sidewaysOffsetVector, bot.stats.targetOffset);
+            offsetTargetPosition.y = bot.mesh.position.y; // Keep target at bot's height
+
+            // --- Steering ---
+            // Calculate vector towards the offset target point
+            const directionToOffsetTarget = offsetTargetPosition.clone().sub(bot.mesh.position);
+            directionToOffsetTarget.y = 0;
+            directionToOffsetTarget.normalize();
+
+            // Calculate desired angle
+            const desiredAngle = Math.atan2(directionToOffsetTarget.x, directionToOffsetTarget.z);
+
+            // Smoothly interpolate current angle towards desired angle
+            let angleDifference = desiredAngle - bot.mesh.rotation.y;
+            // Normalize angle difference to [-PI, PI]
+            while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
+            while (angleDifference > Math.PI) angleDifference -= Math.PI * 2;
+
+            // Apply turn rate, clamping the change
+            const turnAmount = Math.max(-bot.stats.turnRate, Math.min(bot.stats.turnRate, angleDifference));
+            bot.mesh.rotation.y += turnAmount;
+
+            // --- Speed and Movement ---
+            // Accelerate towards max speed
+            bot.speed = Math.min(bot.stats.maxSpeed, bot.speed + bot.stats.acceleration);
+
+            // Move bot forward based on its current rotation
+            const moveDirection = new THREE.Vector3(
+                Math.sin(bot.mesh.rotation.y),
+                0,
+                Math.cos(bot.mesh.rotation.y)
+            );
+            bot.mesh.position.addScaledVector(moveDirection, bot.speed);
+
+            // --- Checkpoint Advancement ---
+            // Check distance to the *actual* checkpoint center, not the offset one
+            if (distanceToTargetCenter < arrivalThreshold) {
+                bot.currentCheckpointIndex = targetCheckpointIndex;
+                bot.targetCheckpointIndex = nextTargetCheckpointIndex;
                 // console.log(`Bot reached checkpoint ${bot.currentCheckpointIndex + 1}, next target: ${bot.targetCheckpointIndex + 1}`);
-            } else {
-                // Move bot
-                direction.normalize();
-                bot.mesh.position.addScaledVector(direction, bot.speed);
-
-                // Rotate bot to face target
-                // Use a temporary lookAt target slightly ahead to avoid jerky rotation at arrival
-                const lookAtTarget = bot.mesh.position.clone().addScaledVector(direction, 5.0);
-                lookAtTarget.y = bot.mesh.position.y; // Keep lookAt target level
-                bot.mesh.lookAt(lookAtTarget);
             }
         });
     }
