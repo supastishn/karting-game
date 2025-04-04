@@ -84,6 +84,7 @@ class Game {
         this.defaultDriftMomentumTurnSpeed = 0.005; // Store default value
         this.oppositeDirectionFactor = 0.001; // How much opposite direction reduces momentum (lower = more reduction)
         this.isInDriftMomentum = false;
+        this.offRoadMultiplier = 0.3; // Speed multiplier when off-road
 
         // Lap counting system
         this.currentLap = 1;
@@ -602,6 +603,11 @@ class Game {
             this.targetSpeedLimit *= this.boostMultiplier;
         }
 
+        // Apply off-road penalty
+        if (this.isOffRoad(this.kart.position)) {
+            this.targetSpeedLimit *= this.offRoadMultiplier;
+        }
+
         // Smoothly interpolate current speed limit
         this.currentSpeedLimit = this.currentSpeedLimit + (this.targetSpeedLimit - this.currentSpeedLimit) * this.speedLimitLerpFactor;
 
@@ -637,6 +643,23 @@ class Game {
 
         // Update speedometer
         this.updateSpeedometer();
+    }
+
+    isOffRoad(position) {
+        const x = position.x;
+        const z = position.z;
+        const outerA = this.trackLength / 2;
+        const outerB = this.trackWidth / 2;
+        const innerA = this.trackLengthInner / 2;
+        const innerB = this.trackWidthInner / 2;
+
+        // Check if outside the outer ellipse
+        const isOutsideOuter = (x / outerA) ** 2 + (z / outerB) ** 2 > 1;
+
+        // Check if inside the inner ellipse (hole)
+        const isInsideInner = (x / innerA) ** 2 + (z / innerB) ** 2 < 1;
+
+        return isOutsideOuter || isInsideInner;
     }
 
     updateLapCounter() {
