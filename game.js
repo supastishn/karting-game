@@ -1100,10 +1100,11 @@ class Game {
                             console.log('%cRace Complete!', 'background: #FFC107; color: black; padding: 4px; border-radius: 4px;');
                             alert('Race Complete!');
                         }
-                    } else {
-                        this.checkpointsPassed++;
-                        console.debug(`Checkpoints passed this lap: ${this.checkpointsPassed}/${this.totalCheckpoints}`);
                     }
+                    // Increment checkpoints passed for this lap *after* handling lap completion check
+                    this.checkpointsPassed++;
+                    console.debug(`Checkpoints passed this lap: ${this.checkpointsPassed}/${this.totalCheckpoints}`);
+
                 } else {
                     console.warn(`Wrong checkpoint sequence! Expected ${(this.lastCheckpoint + 1) % this.totalCheckpoints + 1}, got ${i + 1}`);
                 }
