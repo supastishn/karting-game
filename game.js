@@ -93,6 +93,7 @@ class Game {
         this.lastCheckpoint = -1;
         this.checkpoints = []; // Will store checkpoint coordinates
         this.raceFinished = false;
+        this.bots = []; // Array to hold bot objects
         
         // Lap display element - moved up in constructor for immediate visibility
         this.lapDisplay = document.createElement('div');
@@ -101,6 +102,7 @@ class Game {
         this.updateLapCounter(); // Call immediately to show initial lap count
         
         this.setupScene();
+        this.createBots(3); // Create 3 bots
         this.setupControls();
         this.animate();
     }
@@ -148,6 +150,44 @@ class Game {
         this.updateCamera(); // Call updateCamera once to set initial position based on kart
         this.camera.position.copy(this.cameraTargetPosition); // Set camera position directly without lerp for the first frame
         this.camera.lookAt(this.kart.position);
+    }
+
+    createBots(numberOfBots) {
+        const botGeometry = new THREE.BoxGeometry(1, 0.5, 2);
+        const botColors = [0xff0000, 0x00ff00, 0x0000ff]; // Red, Green, Blue for bots
+        const startOffset = 5.0; // How far behind the line bots start
+        const spacing = 2.0; // Spacing between bots
+
+        // Use the same starting parameters as the player kart for reference
+        const startParams = { x: 0, z: this.trackWidth / 4, rotation: Math.PI / 2 };
+        const behindVector = new THREE.Vector3(
+            -Math.sin(startParams.rotation), 0, -Math.cos(startParams.rotation)
+        );
+        const sideVector = new THREE.Vector3(
+            Math.cos(startParams.rotation), 0, -Math.sin(startParams.rotation)
+        );
+
+        for (let i = 0; i < numberOfBots; i++) {
+            const botMaterial = new THREE.MeshBasicMaterial({ color: botColors[i % botColors.length] });
+            const botMesh = new THREE.Mesh(botGeometry, botMaterial);
+
+            // Calculate staggered starting position
+            const botStartPosition = new THREE.Vector3(startParams.x, 0.25, startParams.z)
+                .addScaledVector(behindVector, startOffset + i * 1.5) // Stagger depth
+                .addScaledVector(sideVector, (i % 2 === 0 ? 1 : -1) * spacing * Math.ceil((i+1)/2)); // Stagger side
+
+            botMesh.position.copy(botStartPosition);
+            botMesh.rotation.y = startParams.rotation; // Start facing forward
+
+            this.scene.add(botMesh);
+
+            this.bots.push({
+                mesh: botMesh,
+                speed: this.maxSpeed * (0.7 + Math.random() * 0.15), // Slightly slower than player, with variation
+                targetCheckpointIndex: 1, // Start heading towards the second checkpoint (index 1)
+                currentCheckpointIndex: 0 // They start having 'passed' checkpoint 0
+            });
+        }
     }
 
     createRaceTrack() {
@@ -712,9 +752,44 @@ class Game {
     }
     }
 
+    updateBots() {
+        const arrivalThreshold = 2.0; // How close the bot needs to be to the checkpoint
+
+        this.bots.forEach(bot => {
+            if (!this.checkpoints || this.checkpoints.length === 0) return; // Ensure checkpoints are loaded
+
+            const targetCheckpoint = this.checkpoints[bot.targetCheckpointIndex];
+            if (!targetCheckpoint) return; // Ensure target exists
+
+            const targetPosition = targetCheckpoint.position.clone();
+            targetPosition.y = bot.mesh.position.y; // Keep bot on the ground plane for movement calculation
+
+            const direction = targetPosition.clone().sub(bot.mesh.position);
+            const distance = direction.length();
+
+            // Check if bot reached the checkpoint
+            if (distance < arrivalThreshold) {
+                bot.currentCheckpointIndex = bot.targetCheckpointIndex;
+                bot.targetCheckpointIndex = (bot.targetCheckpointIndex + 1) % this.totalCheckpoints;
+                // console.log(`Bot reached checkpoint ${bot.currentCheckpointIndex + 1}, next target: ${bot.targetCheckpointIndex + 1}`);
+            } else {
+                // Move bot
+                direction.normalize();
+                bot.mesh.position.addScaledVector(direction, bot.speed);
+
+                // Rotate bot to face target
+                // Use a temporary lookAt target slightly ahead to avoid jerky rotation at arrival
+                const lookAtTarget = bot.mesh.position.clone().addScaledVector(direction, 5.0);
+                lookAtTarget.y = bot.mesh.position.y; // Keep lookAt target level
+                bot.mesh.lookAt(lookAtTarget);
+            }
+        });
+    }
+
     animate() {
         requestAnimationFrame(() => this.animate());
         this.updateKart();
+        this.updateBots(); // Update bots each frame
         this.checkCheckpoints();
         this.renderer.render(this.scene, this.camera);
     }
