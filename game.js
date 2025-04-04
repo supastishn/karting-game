@@ -190,18 +190,18 @@ class Game {
             switch (this.difficulty) {
                 case 'medium':
                     botStats = {
-                        maxSpeed: this.maxSpeed * (0.75 + Math.random() * 0.2), // 75-95%
-                        acceleration: this.acceleration * (0.9 + Math.random() * 0.4),
-                        turnRate: this.turnSpeed * (1.8 + Math.random() * 1.0), // 1.8x - 2.8x
-                        targetOffset: (Math.random() - 0.5) * 10 // +/- 5.0
+                        maxSpeed: this.maxSpeed * (0.80 + Math.random() * 0.2), // 80-100%
+                        acceleration: this.acceleration * (1.0 + Math.random() * 0.4), // 1.0x - 1.4x
+                        turnRate: this.turnSpeed * (2.0 + Math.random() * 1.0), // 2.0x - 3.0x
+                        targetOffset: (Math.random() - 0.5) * 8 // +/- 4.0
                     };
                     break;
                 case 'hard':
                     botStats = {
-                        maxSpeed: this.maxSpeed * (0.85 + Math.random() * 0.2), // 85-105%
-                        acceleration: this.acceleration * (1.0 + Math.random() * 0.4),
-                        turnRate: this.turnSpeed * (2.2 + Math.random() * 1.0), // 2.2x - 3.2x
-                        targetOffset: (Math.random() - 0.5) * 5 // +/- 2.5
+                        maxSpeed: this.maxSpeed * (0.90 + Math.random() * 0.2), // 90-110%
+                        acceleration: this.acceleration * (1.1 + Math.random() * 0.4), // 1.1x - 1.5x
+                        turnRate: this.turnSpeed * (2.5 + Math.random() * 1.0), // 2.5x - 3.5x
+                        targetOffset: (Math.random() - 0.5) * 3 // +/- 1.5
                     };
                     break;
                 case 'easy':
