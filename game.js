@@ -992,6 +992,69 @@ class Game {
         return Math.sqrt(dx * dx + dz * dz);
     }
 
+    // --- Collision Detection and Handling ---
+
+    checkKartCollisions() {
+        const kartRadius = 1.1; // Approximate radius for collision sphere
+        const playerSphere = new THREE.Sphere(this.kart.position, kartRadius);
+
+        // Player vs Bots
+        this.bots.forEach(bot => {
+            const botSphere = new THREE.Sphere(bot.mesh.position, kartRadius);
+            if (playerSphere.intersectsSphere(botSphere)) {
+                this.handleKartCollision(
+                    { mesh: this.kart, impulse: this.impulse }, // Player object wrapper
+                    bot // Bot object already has mesh and impulse
+                );
+            }
+        });
+
+        // Bots vs Bots
+        for (let i = 0; i < this.bots.length; i++) {
+            for (let j = i + 1; j < this.bots.length; j++) {
+                const botA = this.bots[i];
+                const botB = this.bots[j];
+                const sphereA = new THREE.Sphere(botA.mesh.position, kartRadius);
+                const sphereB = new THREE.Sphere(botB.mesh.position, kartRadius);
+
+                if (sphereA.intersectsSphere(sphereB)) {
+                    this.handleKartCollision(botA, botB);
+                }
+            }
+        }
+    }
+
+    handleKartCollision(racerA, racerB) {
+        const bumpImpulseMagnitude = 0.15; // How strong the bump is
+
+        const posA = racerA.mesh.position;
+        const posB = racerB.mesh.position;
+
+        // Calculate collision normal (from B to A)
+        const collisionNormal = posA.clone().sub(posB);
+        collisionNormal.y = 0; // Ignore vertical difference for bump direction
+        if (collisionNormal.lengthSq() === 0) {
+             // Avoid division by zero if perfectly overlapped, apply a default push
+             collisionNormal.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+        }
+        collisionNormal.normalize();
+
+
+        // Apply impulse - add to existing impulse to allow multiple bumps
+        const impulseA = collisionNormal.clone().multiplyScalar(bumpImpulseMagnitude);
+        const impulseB = collisionNormal.clone().multiplyScalar(-bumpImpulseMagnitude);
+
+        racerA.impulse.add(impulseA);
+        racerB.impulse.add(impulseB);
+
+        // Optional: Add slight speed reduction or stun effect here if desired later
+        // racerA.speed *= 0.95;
+        // racerB.speed *= 0.95;
+    }
+
+    // --- End Collision Handling ---
+
+
     updateScoreboard() {
         if (this.raceFinished || !this.checkpoints || this.checkpoints.length === 0) return;
 
