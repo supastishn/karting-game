@@ -1725,8 +1725,8 @@ class Game {
                 bot.currentCheckpointIndex = crossedCheckpointIndex;
                 bot.targetCheckpointIndex = nextTargetCheckpointIndex;
 
-                // Check for lap completion (crossing checkpoint 0)
-                if (crossedCheckpointIndex === 0) {
+                // Check for lap completion (crossing the new start/finish line, index 3)
+                if (crossedCheckpointIndex === 3) {
                     bot.lap++;
                     // console.log(`Bot ${this.bots.indexOf(bot)} completed lap, now on lap ${bot.lap}`);
                 }
