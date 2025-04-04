@@ -1185,8 +1185,8 @@ class Game {
             const banana = this.droppedBananas[i];
             const bananaPos = banana.mesh.position;
 
-            // Check player collision (if not the owner)
-            if (banana.owner.mesh !== this.kart && playerPos.distanceTo(bananaPos) < kartRadius + 0.3) { // 0.3 banana radius
+            // Check player collision (removed owner check to allow self-hit)
+            if (playerPos.distanceTo(bananaPos) < kartRadius + 0.3) { // 0.3 banana radius
                 this.applyBananaHit({ mesh: this.kart });
                 this.scene.remove(banana.mesh);
                 this.droppedBananas.splice(i, 1);
