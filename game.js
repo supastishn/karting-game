@@ -316,7 +316,7 @@ class Game {
                         maxSpeed: this.maxSpeed * (0.80 + Math.random() * 0.2), // 80-100%
                         acceleration: this.acceleration * (1.0 + Math.random() * 0.4), // 1.0x - 1.4x
                         turnRate: this.turnSpeed * (2.0 + Math.random() * 1.0), // 2.0x - 3.0x
-                        targetOffset: (Math.random() - 0.5) * 8 // +/- 4.0
+                        targetOffset: (Math.random() - 0.5) * 10 // +/- 5.0 (was 8)
                     };
                     break;
                 case 'hard':
@@ -324,7 +324,7 @@ class Game {
                         maxSpeed: this.maxSpeed * (0.90 + Math.random() * 0.2), // 90-110%
                         acceleration: this.acceleration * (1.1 + Math.random() * 0.4), // 1.1x - 1.5x
                         turnRate: this.turnSpeed * (2.5 + Math.random() * 1.0), // 2.5x - 3.5x
-                        targetOffset: (Math.random() - 0.5) * 3 // +/- 1.5
+                        targetOffset: (Math.random() - 0.5) * 6 // +/- 3.0 (was 3)
                     };
                     break;
                 case 'easy':
@@ -333,7 +333,7 @@ class Game {
                         maxSpeed: this.maxSpeed * (0.65 + Math.random() * 0.2), // 65-85%
                         acceleration: this.acceleration * (0.8 + Math.random() * 0.4),
                         turnRate: this.turnSpeed * (1.5 + Math.random() * 1.0), // 1.5x - 2.5x
-                        targetOffset: (Math.random() - 0.5) * 15 // +/- 7.5
+                        targetOffset: (Math.random() - 0.5) * 18 // +/- 9.0 (was 15)
                     };
                     break;
             }
@@ -351,7 +351,11 @@ class Game {
                 driftTime: 0,
                 miniTurboStage: 0,
                 boosting: false,
-                boostTime: 0
+                boostTime: 0,
+                // Dynamic path variation
+                dynamicTargetOffset: 0, // Current dynamic offset value
+                dynamicOffsetTimer: Math.random() * 0.5, // Timer to control how often dynamic offset changes (random start)
+                dynamicOffsetUpdateTime: 0.5 + Math.random() * 0.5 // How often to change offset (0.5-1.0s)
             });
         }
     }
@@ -1057,9 +1061,21 @@ class Game {
             // 3. Calculate a sideways offset vector (perpendicular to exit direction)
             const sidewaysOffsetVector = new THREE.Vector3(targetExitDirection.z, 0, -targetExitDirection.x);
 
-            // 4. Calculate the actual target point with the bot's offset
+            // --- Dynamic Offset Calculation ---
+            bot.dynamicOffsetTimer += deltaTime;
+            if (bot.dynamicOffsetTimer >= bot.dynamicOffsetUpdateTime) {
+                // Change the dynamic offset slightly
+                const maxDynamicOffset = 2.5; // Max +/- offset
+                const changeAmount = (Math.random() - 0.5) * 2.0; // How much to change by (+/- 1.0)
+                bot.dynamicTargetOffset = Math.max(-maxDynamicOffset, Math.min(maxDynamicOffset, bot.dynamicTargetOffset + changeAmount));
+                bot.dynamicOffsetTimer = 0; // Reset timer
+                // console.log(`Bot ${this.bots.indexOf(bot)} dynamic offset changed to ${bot.dynamicTargetOffset.toFixed(2)}`);
+            }
+
+            // 4. Calculate the actual target point with the bot's static and dynamic offsets
+            const totalOffset = bot.stats.targetOffset + bot.dynamicTargetOffset;
             const offsetTargetPosition = targetCheckpoint.position.clone()
-                .addScaledVector(sidewaysOffsetVector, bot.stats.targetOffset);
+                .addScaledVector(sidewaysOffsetVector, totalOffset);
             offsetTargetPosition.y = bot.mesh.position.y; // Keep target at bot's height
 
             // --- Steering ---
