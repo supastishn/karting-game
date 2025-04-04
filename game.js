@@ -645,7 +645,18 @@ class Game {
                 }
             }
 
-            // Visual feedback handled by particle emission below
+            // Emit sparks based on mini-turbo stage
+            if (this.miniTurboStage > 0) {
+                const now = performance.now() / 1000; // Time in seconds
+                const timeSinceLastEmit = now - this.lastSparkEmitTime;
+                const emitInterval = 1 / this.sparkEmitRate;
+
+                if (timeSinceLastEmit >= emitInterval) {
+                    const sparkColor = this.sparkColors[this.miniTurboStage - 1];
+                    this.emitDriftSpark(sparkColor);
+                    this.lastSparkEmitTime = now;
+                }
+            }
         } else {
             // If we stop drifting, check if we should apply boost
             if (this.driftTime > this.miniTurboThresholds[1]) {
