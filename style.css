@@ -109,7 +109,8 @@ body {
 #use-item-button {
     background: rgba(100, 100, 255, 0.5); /* Light blue background */
     color: white;
-    margin-top: 10px; /* Space below drift button */
+    /* margin-top: 10px; */ /* Removed top margin */
+    margin-bottom: 10px; /* Add space below item button */
 }
 
 #use-item-button.hidden { /* Ensure it hides correctly */
