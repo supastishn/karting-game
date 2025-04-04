@@ -1,0 +1,125 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    overflow: hidden;
+}
+
+#game-container {
+    width: 100vw;
+    height: 100vh;
+}
+
+#speedometer {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+
+.speed-value {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.speed-unit {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+#mobile-controls {
+    position: fixed;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 20px;
+    pointer-events: none;
+}
+
+#mobile-controls > div {
+    pointer-events: auto;
+}
+
+.left-controls {
+    display: flex;
+    gap: 20px;
+}
+
+.right-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+}
+
+.control-button {
+    width: 70px;
+    height: 70px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: white;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+    touch-action: none;
+}
+
+#forward-button { grid-area: up; }
+#backward-button { grid-area: down; }
+#left-button { grid-area: left; }
+#right-button { grid-area: right; }
+
+#drift-button {
+    background: rgba(255, 255, 255, 0.3);
+    font-size: 32px;
+    color: yellow;
+}
+
+.spark-indicator {
+    position: fixed;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: none;
+    box-shadow: 0 0 20px currentColor;
+    opacity: 0.8;
+    transition: background-color 0.2s ease;
+}
+
+.lap-counter {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: #ffffff;
+    padding: 15px 25px;
+    border-radius: 10px;
+    font-family: Arial, sans-serif;
+    font-size: 24px;
+    font-weight: bold;
+    text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    transition: transform 0.3s ease, background-color 0.3s ease;
+}
+
+.lap-changed {
+    transform: scale(1.2);
+    background-color: rgba(255, 215, 0, 0.8);
+}
