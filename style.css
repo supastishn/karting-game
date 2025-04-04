@@ -78,14 +78,17 @@ body {
     pointer-events: auto;
 }
 
-.left-controls {
-    display: flex;
+/* Renamed from .left-controls */
+.turn-controls {
+    display: flex; /* Keep L/R side-by-side */
     gap: 20px;
+    align-items: center; /* Vertically align L/R buttons if needed */
 }
 
-.right-controls {
+/* Renamed from .right-controls */
+.action-controls {
     display: flex;
-    flex-direction: column;
+    flex-direction: column; /* Stack Action buttons vertically */
     gap: 10px;
     align-items: center;
 }
