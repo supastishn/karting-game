@@ -1306,34 +1306,51 @@ class Game {
             });
         });
 
+        // Log raw racer data before sorting
+        console.log('%c--- Scoreboard Update ---', 'font-weight: bold; color: orange;');
+        console.table(racers.map(r => ({ id: r.id, lap: r.lap, checkpoint: r.checkpointIndex, distNext: r.distanceToNext.toFixed(2) })));
+
+
         // 2. Sort racers based on lap, then checkpoint (handling wrap-around), then distance
         racers.sort((a, b) => {
+            console.log(`%cComparing ${a.id} vs ${b.id}`, 'color: lightblue');
             // 1. Sort by lap descending
             if (a.lap !== b.lap) {
+                console.log(`  Lap diff: ${a.lap} vs ${b.lap} -> ${b.lap - a.lap > 0 ? 'B ahead' : 'A ahead'}`);
                 return b.lap - a.lap;
             }
 
             // 2. Laps are the same, sort by checkpoint index, handling wrap-around
+            console.log(`  Laps same (${a.lap}). Comparing checkpoints: ${a.checkpointIndex} vs ${b.checkpointIndex}`);
             const idxA = a.checkpointIndex;
             const idxB = b.checkpointIndex;
 
             // Special case: If one is at finish (3) and other is not, the non-finish is ahead *within the same lap*
             // This means the racer who has crossed 0, 1, or 2 is ahead of the racer still at 3 from the previous lap completion.
             if (idxA === 3 && idxB !== 3) {
+                console.log(`  Wrap-around: A is at finish (3), B is not (${idxB}) -> B ahead`);
                 return 1; // B is ahead (lower index but effectively further along this lap)
             }
             if (idxB === 3 && idxA !== 3) {
+                console.log(`  Wrap-around: B is at finish (3), A is not (${idxA}) -> A ahead`);
                 return -1; // A is ahead
             }
 
             // Normal case (neither is 3, or both are 3): Higher checkpoint index is ahead
             if (idxA !== idxB) {
+                 console.log(`  Checkpoint diff: ${idxA} vs ${idxB} -> ${idxB - idxA > 0 ? 'B ahead' : 'A ahead'}`);
                 return idxB - idxA;
             }
 
             // 3. Checkpoints are also the same, sort by distance ascending (closer is better)
+            console.log(`  Checkpoints same (${idxA}). Comparing distance: ${a.distanceToNext.toFixed(2)} vs ${b.distanceToNext.toFixed(2)} -> ${a.distanceToNext - b.distanceToNext < 0 ? 'A ahead (closer)' : 'B ahead (closer)'}`);
             return a.distanceToNext - b.distanceToNext;
         });
+
+        // Log the final sorted order
+        console.log('%cSorted Racers:', 'font-weight: bold; color: lightgreen;');
+        console.table(racers.map(r => ({ id: r.id, lap: r.lap, checkpoint: r.checkpointIndex, distNext: r.distanceToNext.toFixed(2) })));
+
 
         // 3. Find player's position
         const playerRank = racers.findIndex(racer => racer.id === 'player') + 1;
