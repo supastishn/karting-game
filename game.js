@@ -1,5 +1,8 @@
 class Game {
-    constructor() {
+    constructor(difficulty = 'easy') { // Accept difficulty
+        this.difficulty = difficulty; // Store difficulty
+        console.log(`Starting game with difficulty: ${this.difficulty}`);
+
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new THREE.WebGLRenderer();
@@ -182,13 +185,36 @@ class Game {
 
             this.scene.add(botMesh);
 
-            // Assign unique stats to each bot
-            const botStats = {
-                maxSpeed: this.maxSpeed * (0.65 + Math.random() * 0.2), // 65% to 85% of player max speed
-                acceleration: this.acceleration * (0.8 + Math.random() * 0.4), // Varying acceleration
-                turnRate: this.turnSpeed * (1.5 + Math.random() * 1.0), // Faster turning than player base, with variation
-                targetOffset: (Math.random() - 0.5) * 15 // Aim +/- 7.5 units sideways from checkpoint center
-            };
+            // Assign unique stats to each bot based on difficulty
+            let botStats = {};
+            switch (this.difficulty) {
+                case 'medium':
+                    botStats = {
+                        maxSpeed: this.maxSpeed * (0.75 + Math.random() * 0.2), // 75-95%
+                        acceleration: this.acceleration * (0.9 + Math.random() * 0.4),
+                        turnRate: this.turnSpeed * (1.8 + Math.random() * 1.0), // 1.8x - 2.8x
+                        targetOffset: (Math.random() - 0.5) * 10 // +/- 5.0
+                    };
+                    break;
+                case 'hard':
+                    botStats = {
+                        maxSpeed: this.maxSpeed * (0.85 + Math.random() * 0.2), // 85-105%
+                        acceleration: this.acceleration * (1.0 + Math.random() * 0.4),
+                        turnRate: this.turnSpeed * (2.2 + Math.random() * 1.0), // 2.2x - 3.2x
+                        targetOffset: (Math.random() - 0.5) * 5 // +/- 2.5
+                    };
+                    break;
+                case 'easy':
+                default: // Default to easy
+                    botStats = {
+                        maxSpeed: this.maxSpeed * (0.65 + Math.random() * 0.2), // 65-85%
+                        acceleration: this.acceleration * (0.8 + Math.random() * 0.4),
+                        turnRate: this.turnSpeed * (1.5 + Math.random() * 1.0), // 1.5x - 2.5x
+                        targetOffset: (Math.random() - 0.5) * 15 // +/- 7.5
+                    };
+                    break;
+            }
+
 
             this.bots.push({
                 mesh: botMesh,
@@ -877,5 +903,30 @@ class Game {
     }
 }
 
-// Start the game
-new Game();
+// --- Difficulty Selection and Game Start Logic ---
+document.addEventListener('DOMContentLoaded', () => {
+    const difficultyScreen = document.getElementById('difficulty-selection');
+    const gameContainer = document.getElementById('game-container');
+    const speedometer = document.getElementById('speedometer');
+    const lapCounter = document.querySelector('.lap-counter');
+    const mobileControls = document.getElementById('mobile-controls');
+    const difficultyButtons = document.querySelectorAll('.difficulty-button');
+
+    difficultyButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const selectedDifficulty = button.id.split('-')[0]; // 'easy', 'medium', or 'hard'
+
+            // Hide difficulty screen
+            difficultyScreen.classList.add('hidden');
+
+            // Show game elements
+            gameContainer.classList.remove('hidden');
+            speedometer.classList.remove('hidden');
+            lapCounter.classList.remove('hidden');
+            mobileControls.classList.remove('hidden');
+
+            // Start the game with the selected difficulty
+            new Game(selectedDifficulty);
+        });
+    });
+});

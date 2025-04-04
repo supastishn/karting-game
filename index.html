@@ -10,14 +10,21 @@
     <script>eruda.init();</script>
 </head>
 <body>
-    <div id="game-container"></div>
-    <div id="speedometer">
+    <div id="difficulty-selection">
+        <h1>Select Difficulty</h1>
+        <button id="easy-button" class="difficulty-button">Easy</button>
+        <button id="medium-button" class="difficulty-button">Medium</button>
+        <button id="hard-button" class="difficulty-button">Hard</button>
+    </div>
+
+    <div id="game-container" class="hidden"></div>
+    <div id="speedometer" class="hidden">
         <div class="speed-value">0</div>
         <div class="speed-unit">km/h</div>
     </div>
     <!-- Add initial lap counter -->
-    <div class="lap-counter">LAP 1/3</div>
-    <div id="mobile-controls">
+    <div class="lap-counter hidden">LAP 1/3</div>
+    <div id="mobile-controls" class="hidden">
         <div class="left-controls">
             <div id="left-button" class="control-button">◀</div>
             <div id="right-button" class="control-button">▶</div>
