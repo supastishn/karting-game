@@ -192,10 +192,10 @@ class Game {
 
         // Create checkpoint positions (4 points around the track)
         const checkpointPositions = [
-            { x: 0, z: this.trackWidth / 2, rotation: Math.PI/2, color: 0xff0000, number: "1" }, // Start/Finish line (red)
-            { x: this.trackLength / 2, z: 0, rotation: Math.PI, color: 0x00ff00, number: "2" }, // Checkpoint 1 (green)
-            { x: 0, z: -this.trackWidth / 2, rotation: -Math.PI/2, color: 0x0000ff, number: "3" }, // Checkpoint 2 (blue)
-            { x: -this.trackLength / 2, z: 0, rotation: 0, color: 0xffff00, number: "4" } // Checkpoint 3 (yellow)
+            { x: 0, z: this.trackWidth /4, rotation: Math.PI/2, color: 0xff0000, number: "1" }, // Start/Finish line (red)
+            { x: this.trackLength / 3, z: 0, rotation: Math.PI, color: 0x00ff00, number: "2" }, // Checkpoint 1 (green)
+            { x: 0, z: -this.trackWidth / 4, rotation: -Math.PI/2, color: 0x0000ff, number: "3" }, // Checkpoint 2 (blue)
+            { x: -this.trackLength / 3, z: 0, rotation: 0, color: 0xffff00, number: "4" } // Checkpoint 3 (yellow)
         ];
 
         checkpointPositions.forEach((pos, index) => {
@@ -687,6 +687,7 @@ class Game {
                 break;
             }
         }
+    }
     }
 
     animate() {
