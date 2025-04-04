@@ -817,8 +817,15 @@ class Game {
             bot.mesh.rotation.y += turnAmount;
 
             // --- Speed and Movement ---
-            // Accelerate towards max speed
-            bot.speed = Math.min(bot.stats.maxSpeed, bot.speed + bot.stats.acceleration);
+            // Reduce max speed based on the sharpness of the required turn
+            let currentMaxSpeed = bot.stats.maxSpeed;
+            // Calculate how much the bot needs to turn (0 = straight, 1 = 90 degrees or more)
+            const turnSharpnessFactor = Math.min(1.0, Math.abs(angleDifference) / (Math.PI / 2));
+            // Reduce speed more for sharper turns (e.g., up to 50% reduction for a 90+ degree turn)
+            currentMaxSpeed *= (1.0 - turnSharpnessFactor * 0.5);
+
+            // Accelerate towards (potentially reduced) max speed
+            bot.speed = Math.min(currentMaxSpeed, bot.speed + bot.stats.acceleration);
 
             // Move bot forward based on its current rotation
             const moveDirection = new THREE.Vector3(
