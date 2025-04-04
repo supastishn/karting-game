@@ -96,6 +96,19 @@ class Game {
         this.impulse = new THREE.Vector3(0, 0, 0); // Impulse vector for bumps
         this.impulseDecay = 0.85; // How quickly bump effect fades
 
+        // Item System
+        this.itemTypes = ['mushroom', 'banana'];
+        this.itemBoxes = [];
+        this.itemBoxMeshes = []; // Store the visual meshes separately
+        this.itemBoxRespawnTime = 8.0; // Seconds for item box to respawn
+        this.droppedBananas = []; // Store active banana objects {mesh, owner}
+        this.playerItem = null; // 'mushroom', 'banana', or null
+        this.playerStunDuration = 0; // Time player is stunned by banana
+        this.playerMushroomBoostDuration = 0; // Time mushroom boost is active
+        this.bananaStunTime = 1.0; // Duration of banana stun in seconds
+        this.mushroomBoostMultiplier = 1.5;
+        this.mushroomBoostTime = 2.0; // Duration of mushroom boost in seconds
+
         // Lap counting system
         this.currentLap = 1;
         this.maxLaps = 3;
@@ -112,12 +125,17 @@ class Game {
         // UI Elements
         this.lapDisplay = document.querySelector('.lap-counter');
         this.positionDisplay = document.querySelector('.position-display');
-        this.countdownDisplay = document.getElementById('countdown-display'); // Get countdown element
+        this.countdownDisplay = document.getElementById('countdown-display');
+        this.itemDisplay = document.getElementById('item-display'); // Get item display element
+        this.itemNameDisplay = document.getElementById('item-name'); // Get inner span for item name/icon
+        this.useItemButton = document.getElementById('use-item-button'); // Get use item button
         this.updateLapCounter();
         this.updateScoreboard();
+        this.updateItemDisplay(); // Initial update for item display
 
         this.setupScene();
         this.createBots(3);
+        this.createItemBoxes(); // Create item boxes
         this.setupControls();
         // Don't start animate immediately, start countdown first
         this.startCountdown();
@@ -361,7 +379,11 @@ class Game {
                 dynamicOffsetUpdateTime: 0.2 + Math.random() * 0.4, // How often to change offset (0.2-0.6s) - More frequent updates
                 lastSparkEmitTime: 0, // Initialize spark timer for bots
                 impulse: new THREE.Vector3(0, 0, 0), // Impulse vector for bumps
-                impulseDecay: 0.85 // Same decay as player for consistency
+                impulseDecay: 0.85, // Same decay as player for consistency
+                // Item state for bots
+                item: null,
+                stunDuration: 0,
+                mushroomBoostDuration: 0
             });
         }
     }
@@ -507,6 +529,53 @@ class Game {
         });
     }
 
+    createItemBoxes() {
+        const boxGeometry = new THREE.BoxGeometry(2, 2, 2);
+        // Simple rainbow texture for item boxes
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 64);
+        gradient.addColorStop(0, 'red');
+        gradient.addColorStop(1/6, 'orange');
+        gradient.addColorStop(2/6, 'yellow');
+        gradient.addColorStop(3/6, 'green');
+        gradient.addColorStop(4/6, 'blue');
+        gradient.addColorStop(5/6, 'indigo');
+        gradient.addColorStop(1, 'violet');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const boxMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.8 });
+
+        // Define item box positions (adjust these based on your track)
+        const boxPositions = [
+            { x: this.trackLength * 0.3, z: this.trackWidth * 0.1 },
+            { x: this.trackLength * 0.3, z: -this.trackWidth * 0.1 },
+            { x: -this.trackLength * 0.3, z: this.trackWidth * 0.1 },
+            { x: -this.trackLength * 0.3, z: -this.trackWidth * 0.1 },
+            { x: 0, z: this.trackWidth * 0.3 },
+            { x: 0, z: -this.trackWidth * 0.3 },
+        ];
+
+        boxPositions.forEach(pos => {
+            const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+            boxMesh.position.set(pos.x, 1.0, pos.z); // Position slightly above track
+            this.scene.add(boxMesh);
+            this.itemBoxMeshes.push(boxMesh);
+
+            this.itemBoxes.push({
+                mesh: boxMesh,
+                position: boxMesh.position.clone(),
+                isActive: true,
+                respawnTimer: 0,
+                radius: 1.5 // Collision radius
+            });
+        });
+    }
+
     setupControls() {
         // Keyboard controls
         window.addEventListener('keydown', (e) => {
@@ -515,6 +584,10 @@ class Game {
             if (e.key === ' ' && !wasPressed) {
                 this.touchControls.drift = true;
                 this.handleDriftPress();
+            }
+            // Use item with 'e' key
+            if (e.key.toLowerCase() === 'e' && !wasPressed) {
+                 this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration }); // Pass player object wrapper
             }
         });
         window.addEventListener('keyup', (e) => {
@@ -562,6 +635,24 @@ class Game {
         addTouchListener('left-button', 'left');
         addTouchListener('right-button', 'right');
         addTouchListener('drift-button', 'drift');
+        addTouchListener('use-item-button', 'useItem'); // Add listener for the new button
+
+        // Special handling for useItem touch control to call the function directly
+        const useItemElement = document.getElementById('use-item-button');
+        if (useItemElement) {
+            useItemElement.addEventListener('touchstart', (e) => {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
+                 useItemElement.style.background = 'rgba(100, 100, 255, 0.8)'; // Darker feedback
+            }, { passive: false });
+             useItemElement.addEventListener('touchend', (e) => {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 useItemElement.style.background = 'rgba(100, 100, 255, 0.5)'; // Restore background
+            }, { passive: false });
+        }
+
 
         // Resize handler
         window.addEventListener('resize', () => {
@@ -609,6 +700,15 @@ class Game {
             // Still update camera and render, but don't move kart
             this.updateCamera();
             this.updateSpeedometer(); // Keep speedometer at 0
+            return;
+        }
+
+        // --- Check Stun ---
+        if (this.playerStunDuration > 0) {
+            this.playerStunDuration -= deltaTime; // Use deltaTime
+            // Keep camera updated, but skip all movement/input logic
+            this.updateCamera();
+            this.updateSpeedometer();
             return;
         }
 
@@ -781,9 +881,16 @@ class Game {
         if (this.driftActive) {
             this.targetSpeedLimit *= this.driftSpeedMultiplier;
         }
-        if (this.boosting) {
-            this.targetSpeedLimit *= this.boostMultiplier;
+        // Apply Mushroom boost (potentially overrides mini-turbo boost multiplier)
+        let currentBoostMultiplier = 1.0;
+        if (this.playerMushroomBoostDuration > 0) {
+            this.playerMushroomBoostDuration -= deltaTime; // Use deltaTime
+            currentBoostMultiplier = this.mushroomBoostMultiplier;
+        } else if (this.boosting) { // Apply mini-turbo boost only if mushroom isn't active
+             currentBoostMultiplier = this.boostMultiplier;
         }
+        this.targetSpeedLimit *= currentBoostMultiplier;
+
 
         // Apply off-road penalty
         if (this.isOffRoad(this.kart.position)) {
@@ -992,7 +1099,75 @@ class Game {
         return Math.sqrt(dx * dx + dz * dz);
     }
 
-    // --- Collision Detection and Handling ---
+    // --- Item Box and Banana Updates ---
+
+    updateItemBoxes(deltaTime) {
+        this.itemBoxes.forEach(box => {
+            if (!box.isActive) {
+                box.respawnTimer -= deltaTime;
+                if (box.respawnTimer <= 0) {
+                    box.isActive = true;
+                    box.mesh.visible = true;
+                }
+            } else {
+                 // Optional: Add visual effect like rotation
+                 box.mesh.rotation.y += 0.02;
+            }
+        });
+    }
+
+    checkItemBoxCollisions() {
+        const playerPos = this.kart.position;
+        this.itemBoxes.forEach(box => {
+            if (box.isActive && playerPos.distanceTo(box.position) < box.radius + 0.5) { // 0.5 is kart radius approx
+                this.giveItem({ mesh: this.kart }); // Pass player identifier
+                box.isActive = false;
+                box.mesh.visible = false;
+                box.respawnTimer = this.itemBoxRespawnTime;
+            }
+            // Check for bots
+            this.bots.forEach(bot => {
+                 if (box.isActive && bot.mesh.position.distanceTo(box.position) < box.radius + 0.5) {
+                     this.giveItem(bot); // Pass bot object
+                     box.isActive = false;
+                     box.mesh.visible = false;
+                     box.respawnTimer = this.itemBoxRespawnTime;
+                 }
+            });
+        });
+    }
+
+     checkBananaCollisions() {
+        const playerPos = this.kart.position;
+        const kartRadius = 0.6; // Smaller radius for banana collision
+
+        for (let i = this.droppedBananas.length - 1; i >= 0; i--) {
+            const banana = this.droppedBananas[i];
+            const bananaPos = banana.mesh.position;
+
+            // Check player collision (if not the owner)
+            if (banana.owner.mesh !== this.kart && playerPos.distanceTo(bananaPos) < kartRadius + 0.3) { // 0.3 banana radius
+                this.applyBananaHit({ mesh: this.kart });
+                this.scene.remove(banana.mesh);
+                this.droppedBananas.splice(i, 1);
+                continue; // Move to next banana check
+            }
+
+            // Check bot collision (if not the owner)
+            for (let j = 0; j < this.bots.length; j++) {
+                 const bot = this.bots[j];
+                 if (banana.owner !== bot && bot.mesh.position.distanceTo(bananaPos) < kartRadius + 0.3) {
+                     this.applyBananaHit(bot);
+                     this.scene.remove(banana.mesh);
+                     this.droppedBananas.splice(i, 1);
+                     break; // Bot hit it, stop checking this banana for other bots
+                 }
+            }
+        }
+    }
+
+
+    // --- Kart Collision Detection and Handling ---
 
     checkKartCollisions() {
         const kartRadius = 1.1; // Approximate radius for collision sphere
@@ -1110,8 +1285,16 @@ class Game {
 
         const arrivalThreshold = 3.0; // How close the bot needs to be to the *actual* checkpoint center
         const lookAheadDistance = 10.0; // How far ahead the bot looks for steering
+        const botUseItemChance = 0.01; // Small chance per frame to use item if conditions met
 
-        this.bots.forEach(bot => {
+        this.bots.forEach((bot, botIndex) => {
+             // --- Check Stun ---
+             if (bot.stunDuration > 0) {
+                 bot.stunDuration -= deltaTime;
+                 // Bot is stunned, do nothing else for this bot this frame
+                 return;
+             }
+
             if (!this.checkpoints || this.checkpoints.length < 2) return; // Need at least 2 checkpoints
 
             const currentCheckpointIndex = bot.currentCheckpointIndex;
@@ -1241,10 +1424,16 @@ class Game {
             if (bot.isDrifting) {
                 currentMaxSpeed *= this.driftSpeedMultiplier; // Use player's drift multiplier
             }
-            // Apply boost speed increase
-            if (bot.boosting) {
-                currentMaxSpeed *= this.boostMultiplier; // Use player's boost multiplier
+            // Apply Mushroom boost (potentially overrides mini-turbo boost multiplier)
+            let currentBoostMultiplier = 1.0;
+            if (bot.mushroomBoostDuration > 0) {
+                bot.mushroomBoostDuration -= deltaTime;
+                currentBoostMultiplier = this.mushroomBoostMultiplier;
+            } else if (bot.boosting) { // Apply mini-turbo boost only if mushroom isn't active
+                 currentBoostMultiplier = this.boostMultiplier;
             }
+            currentMaxSpeed *= currentBoostMultiplier;
+
 
             // Reduce max speed based on the sharpness of the required turn (apply *after* drift/boost mods)
             // Calculate how much the bot needs to turn (0 = straight, 1 = 90 degrees or more)
@@ -1294,6 +1483,26 @@ class Game {
                 }
                 // console.log(`Bot reached checkpoint ${bot.currentCheckpointIndex + 1}, next target: ${bot.targetCheckpointIndex + 1}`);
             }
+
+            // --- Basic Bot Item AI ---
+            if (bot.item && Math.random() < botUseItemChance) {
+                 if (bot.item === 'mushroom') {
+                     // Use mushroom if not currently turning sharply and not already boosting
+                     if (Math.abs(angleDifference) < Math.PI / 8 && bot.mushroomBoostDuration <= 0) {
+                         this.useItem(bot);
+                     }
+                 } else if (bot.item === 'banana') {
+                     // Use banana if player is somewhat close behind (simple check)
+                     const vecBotToPlayer = this.kart.position.clone().sub(bot.mesh.position);
+                     const distSq = vecBotToPlayer.lengthSq();
+                     // Check if player is within 15 units behind the bot
+                     const botForward = new THREE.Vector3(0, 0, 1).applyQuaternion(bot.mesh.quaternion);
+                     if (distSq < 15*15 && vecBotToPlayer.dot(botForward) < 0) { // dot < 0 means player is behind
+                         this.useItem(bot);
+                     }
+                 }
+            }
+
         });
     }
 
@@ -1305,9 +1514,12 @@ class Game {
 
         // Only run game logic if racing
         if (this.gameState === 'racing') {
+            this.updateItemBoxes(deltaTime); // Update item box respawn timers
             this.updateKart();
             this.updateBots(deltaTime);
-            this.checkKartCollisions(); // Check for collisions *after* positions are updated
+            this.checkKartCollisions();
+            this.checkItemBoxCollisions(); // Check for getting items
+            this.checkBananaCollisions(); // Check for hitting bananas
             this.checkCheckpoints();
             this.updateScoreboard();
             this.updateDriftSparks(deltaTime);
@@ -1346,9 +1558,14 @@ document.addEventListener('DOMContentLoaded', () => {
             speedometer.classList.remove('hidden');
             const raceInfo = document.querySelector('.race-info');
             if (raceInfo) raceInfo.classList.remove('hidden');
+            const itemDisplay = document.getElementById('item-display'); // Get item display
+            if (itemDisplay) itemDisplay.classList.add('hidden'); // Start hidden
+            const useItemButton = document.getElementById('use-item-button'); // Get use item button
+            if (useItemButton) useItemButton.classList.add('hidden'); // Start hidden
             const countdownDisplay = document.getElementById('countdown-display');
             if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Ensure hidden at first
             mobileControls.classList.remove('hidden');
+
 
             // Start the game (which now triggers the countdown)
             new Game(selectedDifficulty);
