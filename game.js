@@ -1084,16 +1084,20 @@ class Game {
 
                 // Check if this is the next expected checkpoint
                 if (i === (this.lastCheckpoint + 1) % this.totalCheckpoints) {
+                    // Check for lap completion *before* updating lastCheckpoint
+                    // Condition: Crossing the finish line (i=3) and the previous checkpoint was 2
+                    const completingLap = (i === 3 && this.lastCheckpoint === 2);
+
+                    // Now update lastCheckpoint
                     this.lastCheckpoint = i;
                     console.log(`%cValid checkpoint sequence! Checkpoint ${i + 1} registered`, 'background: #2196F3; color: white; padding: 4px; border-radius: 4px;');
 
-                    // Check for lap completion: crossed the new start/finish line (index 3) after passing the previous one (index 2)
-                    if (i === 3 && this.lastCheckpoint === 2) {
+                    if (completingLap) {
                         this.currentLap++;
                         this.checkpointsPassed = 0; // Reset checkpoints passed for the new lap
                         console.log(`%cLap ${this.currentLap} started!`, 'background: #9C27B0; color: white; padding: 4px; border-radius: 4px;');
                         this.updateLapCounter();
-                        
+
                         // Check if race is finished
                         if (this.currentLap > this.maxLaps) {
                             this.raceFinished = true;
@@ -1101,8 +1105,11 @@ class Game {
                             alert('Race Complete!');
                         }
                     }
-                    // Increment checkpoints passed for this lap *after* handling lap completion check
-                    this.checkpointsPassed++;
+
+                    // Increment checkpoints passed *unless* a lap was just completed (it resets to 0)
+                    if (!completingLap) {
+                        this.checkpointsPassed++;
+                    }
                     console.debug(`Checkpoints passed this lap: ${this.checkpointsPassed}/${this.totalCheckpoints}`);
 
                 } else {
