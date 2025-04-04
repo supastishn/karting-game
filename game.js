@@ -365,8 +365,8 @@ class Game {
                 mesh: botMesh,
                 speed: 0, // Start stationary
                 lap: 1, // Start on lap 1
-                targetCheckpointIndex: 1,
-                currentCheckpointIndex: 0,
+                targetCheckpointIndex: 0, // Target the new checkpoint 1 (index 0)
+                currentCheckpointIndex: 3, // Start at the new start/finish line (index 3)
                 stats: botStats, // Store the unique stats
                 // Drift/Boost state for bots
                 isDrifting: false,
@@ -472,12 +472,16 @@ class Game {
         const checkpointWidth = 45; // Adjusted to be wider but not the full track width for better gameplay
         const postHeight = 8; // Made posts taller for better visibility
 
-        // Create checkpoint positions (4 points around the track)
+        // Create checkpoint positions (4 points around the track) - REORDERED
         const checkpointPositions = [
-            { x: 0, z: this.trackWidth /4, rotation: Math.PI/2, color: 0xff0000, number: "1" }, // Start/Finish line (red)
-            { x: this.trackLength / 3, z: 0, rotation: Math.PI, color: 0x00ff00, number: "2" }, // Checkpoint 1 (green)
-            { x: 0, z: -this.trackWidth / 4, rotation: -Math.PI/2, color: 0x0000ff, number: "3" }, // Checkpoint 2 (blue)
-            { x: -this.trackLength / 3, z: 0, rotation: 0, color: 0xffff00, number: "4" } // Checkpoint 3 (yellow)
+            // Original 4 is now 1
+            { x: -this.trackLength / 3, z: 0, rotation: 0, color: 0xffff00, number: "1" }, // New Checkpoint 1 (yellow)
+            // Original 3 is now 2
+            { x: 0, z: -this.trackWidth / 4, rotation: -Math.PI/2, color: 0x0000ff, number: "2" }, // New Checkpoint 2 (blue)
+            // Original 2 is now 3
+            { x: this.trackLength / 3, z: 0, rotation: Math.PI, color: 0x00ff00, number: "3" }, // New Checkpoint 3 (green)
+            // Original 1 is now 4 (Start/Finish)
+            { x: 0, z: this.trackWidth /4, rotation: Math.PI/2, color: 0xff0000, number: "4" }, // New Start/Finish line (red)
         ];
 
         checkpointPositions.forEach((pos, index) => {
@@ -1076,11 +1080,11 @@ class Game {
                 if (i === (this.lastCheckpoint + 1) % this.totalCheckpoints) {
                     this.lastCheckpoint = i;
                     console.log(`%cValid checkpoint sequence! Checkpoint ${i + 1} registered`, 'background: #2196F3; color: white; padding: 4px; border-radius: 4px;');
-                    
-                    // If we crossed the start/finish line (checkpoint 0)
-                    if (i === 0 && this.checkpointsPassed >= this.totalCheckpoints - 1) {
+
+                    // Check for lap completion: crossed the new start/finish line (index 3) after passing the previous one (index 2)
+                    if (i === 3 && this.lastCheckpoint === 2) {
                         this.currentLap++;
-                        this.checkpointsPassed = 0;
+                        this.checkpointsPassed = 0; // Reset checkpoints passed for the new lap
                         console.log(`%cLap ${this.currentLap} started!`, 'background: #9C27B0; color: white; padding: 4px; border-radius: 4px;');
                         this.updateLapCounter();
                         
