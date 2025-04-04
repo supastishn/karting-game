@@ -187,7 +187,8 @@ class Game {
         this.scene.add(this.sparkPoints);
     }
 
-    emitDriftSpark(color) {
+    // Modified to accept kartObject and kartSpeed for bots
+    emitDriftSpark(color, kartObject = this.kart, kartSpeed = this.speed) {
         if (this.driftSparks.length >= this.maxSparks) return; // Don't exceed max
 
         // Calculate position behind rear wheels (adjust offsets as needed)
@@ -195,20 +196,20 @@ class Game {
         const sideOffset = 0.4; // How far sideways from kart center
         const heightOffset = 0.1; // How high off the ground
 
-        // Get kart's orientation vectors
-        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.kart.quaternion);
-        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.kart.quaternion);
+        // Get the specific kart's orientation vectors
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(kartObject.quaternion);
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(kartObject.quaternion);
 
         // Alternate sides for sparks
         const sideSign = (this.driftSparks.length % 2 === 0) ? 1 : -1;
 
-        const position = this.kart.position.clone()
+        const position = kartObject.position.clone() // Use kartObject's position
             .addScaledVector(forward, rearOffset)
             .addScaledVector(right, sideOffset * sideSign)
             .add(new THREE.Vector3(0, heightOffset, 0));
 
-        // Calculate velocity (mostly backwards, slightly outwards and upwards)
-        const baseVelocity = forward.clone().multiplyScalar(-this.speed * 5 - 2); // Backwards based on speed
+        // Calculate velocity (mostly backwards, slightly outwards and upwards) based on kartSpeed
+        const baseVelocity = forward.clone().multiplyScalar(-kartSpeed * 5 - 2); // Use kartSpeed
         const outwardVelocity = right.clone().multiplyScalar(sideSign * (Math.random() * 2 + 1)); // Sideways spread
         const upwardVelocity = new THREE.Vector3(0, Math.random() * 2 + 1, 0); // Upward spread
 
@@ -355,7 +356,8 @@ class Game {
                 // Dynamic path variation
                 dynamicTargetOffset: 0, // Current dynamic offset value
                 dynamicOffsetTimer: Math.random() * 0.5, // Timer to control how often dynamic offset changes (random start 0-0.5s)
-                dynamicOffsetUpdateTime: 0.2 + Math.random() * 0.4 // How often to change offset (0.2-0.6s) - More frequent updates
+                dynamicOffsetUpdateTime: 0.2 + Math.random() * 0.4, // How often to change offset (0.2-0.6s) - More frequent updates
+                lastSparkEmitTime: 0 // Initialize spark timer for bots
             });
         }
     }
@@ -1133,7 +1135,20 @@ class Game {
                         break;
                     }
                 }
-                // Optional: Add bot spark emission here if desired
+
+                // Emit sparks for bots based on mini-turbo stage
+                if (bot.miniTurboStage > 0) {
+                    const now = performance.now() / 1000; // Time in seconds
+                    const timeSinceLastEmit = now - bot.lastSparkEmitTime;
+                    const emitInterval = 1 / this.sparkEmitRate; // Use the same rate as player
+
+                    if (timeSinceLastEmit >= emitInterval) {
+                        const sparkColor = this.sparkColors[bot.miniTurboStage - 1];
+                        // Call the modified function with bot's mesh and speed
+                        this.emitDriftSpark(sparkColor, bot.mesh, bot.speed);
+                        bot.lastSparkEmitTime = now; // Update the bot's specific timer
+                    }
+                }
             }
 
             // Update boost timer
