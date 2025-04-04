@@ -436,11 +436,32 @@ class Game {
 
         // Create checkpoints
         this.createCheckpoints();
+        // Create the racing line path
+        this.createRacingLine();
     }
+
+    // New function to calculate points along the track centerline
+    createRacingLine(numPoints = 100) {
+        const avgLength = (this.trackLength + this.trackLengthInner) / 2;
+        const avgWidth = (this.trackWidth + this.trackWidthInner) / 2;
+
+        for (let i = 0; i < numPoints; i++) {
+            const t = (i / numPoints) * Math.PI * 2;
+            const x = Math.cos(t) * avgLength / 2;
+            const z = Math.sin(t) * avgWidth / 2;
+            this.racingLinePoints.push(new THREE.Vector3(x, 0.1, z)); // Store points at track height
+        }
+        // Optional: Visualize the path for debugging
+        // const lineMat = new THREE.LineBasicMaterial({ color: 0xff00ff });
+        // const lineGeo = new THREE.BufferGeometry().setFromPoints(this.racingLinePoints);
+        // const pathLine = new THREE.LineLoop(lineGeo, lineMat); // Use LineLoop for closed path
+        // this.scene.add(pathLine);
+    }
+
 
     createCheckpoints() {
         // Create visible checkpoints with clearer appearance
-        const checkpointMaterial = new THREE.MeshBasicMaterial({ 
+        const checkpointMaterial = new THREE.MeshBasicMaterial({
             color: 0xffff00,
             transparent: true,
             opacity: 0.4,
