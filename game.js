@@ -97,19 +97,23 @@ class Game {
         this.lastCheckpoint = -1;
         this.checkpoints = []; // Will store checkpoint coordinates
         this.raceFinished = false;
+        this.gameState = 'countdown'; // Add game state: 'countdown', 'racing', 'finished'
+        this.countdownValue = 3;
         this.bots = []; // Array to hold bot objects
         this.playerPosition = 1; // Initialize player position
 
         // UI Elements
-        this.lapDisplay = document.querySelector('.lap-counter'); // Use existing element
-        this.positionDisplay = document.querySelector('.position-display'); // Get position element
-        this.updateLapCounter(); // Call immediately to show initial lap count
-        this.updateScoreboard(); // Call immediately to show initial position
+        this.lapDisplay = document.querySelector('.lap-counter');
+        this.positionDisplay = document.querySelector('.position-display');
+        this.countdownDisplay = document.getElementById('countdown-display'); // Get countdown element
+        this.updateLapCounter();
+        this.updateScoreboard();
 
         this.setupScene();
-        this.createBots(3); // Create 3 bots
+        this.createBots(3);
         this.setupControls();
-        this.animate();
+        // Don't start animate immediately, start countdown first
+        this.startCountdown();
     }
 
     setupScene() {
@@ -155,6 +159,25 @@ class Game {
         this.updateCamera(); // Call updateCamera once to set initial position based on kart
         this.camera.position.copy(this.cameraTargetPosition); // Set camera position directly without lerp for the first frame
         this.camera.lookAt(this.kart.position);
+    }
+
+    startCountdown() {
+        this.countdownDisplay.textContent = this.countdownValue;
+        this.countdownDisplay.classList.remove('hidden');
+
+        const countdownInterval = setInterval(() => {
+            this.countdownValue--;
+            if (this.countdownValue > 0) {
+                this.countdownDisplay.textContent = this.countdownValue;
+            } else if (this.countdownValue === 0) {
+                this.countdownDisplay.textContent = 'GO!';
+            } else {
+                clearInterval(countdownInterval);
+                this.countdownDisplay.classList.add('hidden');
+                this.gameState = 'racing'; // Start the race
+                this.animate(); // Start the main animation loop *after* countdown
+            }
+        }, 1000); // 1 second interval
     }
 
     createBots(numberOfBots) {
@@ -466,6 +489,14 @@ class Game {
     }
 
     updateKart() {
+        // Only allow updates if the race is active
+        if (this.gameState !== 'racing') {
+            // Still update camera and render, but don't move kart
+            this.updateCamera();
+            this.updateSpeedometer(); // Keep speedometer at 0
+            return;
+        }
+
         // Store previous position *before* calculating new position for this frame
         this.lastKartPosition.copy(this.kart.position);
         // Check if trying to drift
@@ -880,6 +911,9 @@ class Game {
 
 
     updateBots() {
+        // Only allow updates if the race is active
+        if (this.gameState !== 'racing') return;
+
         const arrivalThreshold = 3.0; // How close the bot needs to be to the *actual* checkpoint center
         const lookAheadDistance = 10.0; // How far ahead the bot looks for steering
 
@@ -971,11 +1005,21 @@ class Game {
     }
 
     animate() {
+        // Keep requesting frames regardless of state to allow rendering during countdown
         requestAnimationFrame(() => this.animate());
-        this.updateKart();
-        this.updateBots(); // Update bots each frame
-        this.checkCheckpoints();
-        this.updateScoreboard(); // Update scoreboard each frame
+
+        // Only run game logic if racing
+        if (this.gameState === 'racing') {
+            this.updateKart();
+            this.updateBots();
+            this.checkCheckpoints();
+            this.updateScoreboard();
+        } else if (this.gameState === 'countdown') {
+            // Keep camera updated during countdown
+            this.updateCamera();
+        }
+
+        // Always render the scene
         this.renderer.render(this.scene, this.camera);
     }
 }
@@ -1000,16 +1044,16 @@ document.addEventListener('DOMContentLoaded', () => {
             // Hide difficulty screen
             difficultyScreen.classList.add('hidden');
 
-            // Show game elements
+            // Show game elements (except countdown initially)
             gameContainer.classList.remove('hidden');
             speedometer.classList.remove('hidden');
-            // Select the container for lap/position
             const raceInfo = document.querySelector('.race-info');
             if (raceInfo) raceInfo.classList.remove('hidden');
+            const countdownDisplay = document.getElementById('countdown-display');
+            if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Ensure hidden at first
             mobileControls.classList.remove('hidden');
 
-
-            // Start the game with the selected difficulty
+            // Start the game (which now triggers the countdown)
             new Game(selectedDifficulty);
         });
     });

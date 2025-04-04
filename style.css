@@ -203,3 +203,23 @@ body {
 .difficulty-button:active {
     transform: scale(0.95);
 }
+
+#countdown-display {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 15vw; /* Responsive font size */
+    font-weight: bold;
+    color: yellow;
+    text-shadow: 5px 5px 10px rgba(0, 0, 0, 0.7);
+    z-index: 1500; /* Above game elements, below difficulty */
+    opacity: 1;
+    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
+
+#countdown-display.hidden {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.5); /* Scale up as it fades */
+    pointer-events: none;
+}
