@@ -159,8 +159,9 @@ class Game {
         this.kart = new THREE.Mesh(kartGeometry, kartMaterial);
         this.scene.add(this.kart);
 
-        // Define start parameters based on the first checkpoint definition
-        const startParams = { x: 0, z: this.trackWidth / 4, rotation: Math.PI / 2 };
+        // Define start parameters based on the *new* first checkpoint (index 0)
+        const newStartCheckpoint = this.checkpoints[0]; // Get the data for the new checkpoint 1
+        const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
         const startOffsetDistance = 3.0; // How far behind the line to start
 
         // Calculate the direction vector opposite to the starting rotation
@@ -307,8 +308,9 @@ class Game {
         const startOffset = 5.0; // How far behind the line bots start
         const spacing = 2.0; // Spacing between bots
 
-        // Use the same starting parameters as the player kart for reference
-        const startParams = { x: 0, z: this.trackWidth / 4, rotation: Math.PI / 2 };
+        // Use the starting parameters of the *new* first checkpoint (index 0)
+        const newStartCheckpoint = this.checkpoints[0]; // Get the data for the new checkpoint 1
+        const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
         const behindVector = new THREE.Vector3(
             -Math.sin(startParams.rotation), 0, -Math.cos(startParams.rotation)
         );
