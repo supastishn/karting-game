@@ -122,10 +122,15 @@ class Game {
         this.kart = new THREE.Mesh(kartGeometry, kartMaterial);
         this.scene.add(this.kart);
 
-        // Position camera and kart
-        this.camera.position.set(0, 3, -5);
+        // Position kart at the start/finish line (first checkpoint)
+        const startCheckpoint = { x: 0, z: this.trackWidth / 4, rotation: Math.PI / 2 };
+        this.kart.position.set(startCheckpoint.x, 0.25, startCheckpoint.z);
+        this.kart.rotation.y = startCheckpoint.rotation;
+
+        // Position camera initially behind the kart
+        this.updateCamera(); // Call updateCamera once to set initial position based on kart
+        this.camera.position.copy(this.cameraTargetPosition); // Set camera position directly without lerp for the first frame
         this.camera.lookAt(this.kart.position);
-        this.kart.position.y = 0.25;
     }
 
     createRaceTrack() {
