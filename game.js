@@ -93,6 +93,8 @@ class Game {
         this.oppositeDirectionFactor = 0.001; // How much opposite direction reduces momentum (lower = more reduction)
         this.isInDriftMomentum = false;
         this.offRoadMultiplier = 0.3; // Speed multiplier when off-road
+        this.impulse = new THREE.Vector3(0, 0, 0); // Impulse vector for bumps
+        this.impulseDecay = 0.85; // How quickly bump effect fades
 
         // Lap counting system
         this.currentLap = 1;
@@ -357,7 +359,9 @@ class Game {
                 dynamicTargetOffset: 0, // Current dynamic offset value
                 dynamicOffsetTimer: Math.random() * 0.5, // Timer to control how often dynamic offset changes (random start 0-0.5s)
                 dynamicOffsetUpdateTime: 0.2 + Math.random() * 0.4, // How often to change offset (0.2-0.6s) - More frequent updates
-                lastSparkEmitTime: 0 // Initialize spark timer for bots
+                lastSparkEmitTime: 0, // Initialize spark timer for bots
+                impulse: new THREE.Vector3(0, 0, 0), // Impulse vector for bumps
+                impulseDecay: 0.85 // Same decay as player for consistency
             });
         }
     }
@@ -813,6 +817,14 @@ class Game {
         );
         this.kart.position.add(movement);
 
+        // Apply bump impulse
+        this.kart.position.add(this.impulse);
+        // Decay impulse
+        this.impulse.multiplyScalar(this.impulseDecay);
+        if (this.impulse.lengthSq() < 0.0001) {
+            this.impulse.set(0, 0, 0); // Reset if very small
+        }
+
         // Update kart height based on hop
         this.kart.position.y = 0.25 + this.hopHeight;
 
@@ -1196,6 +1208,15 @@ class Game {
             );
             bot.mesh.position.addScaledVector(moveDirection, bot.speed);
 
+            // Apply bump impulse
+            bot.mesh.position.add(bot.impulse);
+            // Decay impulse
+            bot.impulse.multiplyScalar(bot.impulseDecay);
+             if (bot.impulse.lengthSq() < 0.0001) {
+                bot.impulse.set(0, 0, 0); // Reset if very small
+            }
+
+
             // --- Checkpoint Advancement ---
             // Check distance to the *actual* checkpoint center, not the offset one
             if (distanceToTargetCenter < arrivalThreshold) {
@@ -1221,11 +1242,12 @@ class Game {
 
         // Only run game logic if racing
         if (this.gameState === 'racing') {
-            this.updateKart(); // Pass deltaTime if needed inside updateKart
-            this.updateBots(deltaTime); // Pass deltaTime to updateBots
+            this.updateKart();
+            this.updateBots(deltaTime);
+            this.checkKartCollisions(); // Check for collisions *after* positions are updated
             this.checkCheckpoints();
             this.updateScoreboard();
-            this.updateDriftSparks(deltaTime); // Update spark particles
+            this.updateDriftSparks(deltaTime);
         } else if (this.gameState === 'countdown') {
             // Keep camera updated during countdown
             this.updateCamera();
