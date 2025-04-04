@@ -363,12 +363,11 @@ class Game {
         const kartVelocity = new THREE.Vector3().copy(this.kart.position).sub(this.lastKartPosition);
         const lookAtPosition = new THREE.Vector3().copy(this.kart.position).add(kartVelocity.multiplyScalar(2));
         this.camera.lookAt(lookAtPosition);
-
-        // Store last position for velocity calculation
-        this.lastKartPosition.copy(this.kart.position);
     }
 
     updateKart() {
+        // Store previous position *before* calculating new position for this frame
+        this.lastKartPosition.copy(this.kart.position);
         // Check if trying to drift
         const wantsDoDrift = this.keys[' '] || this.touchControls.drift;
         const turningLeft = this.keys['a'] || this.keys['arrowleft'] || this.touchControls.left;
