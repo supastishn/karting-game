@@ -690,27 +690,6 @@ class Game {
         }
     }
 
-    // Helper method to detect line intersection
-    lineIntersection(x1, y1, x2, y2, x3, y3, x4, y4) {
-        // Calculate denominator for intersection check
-        const denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-        if (denominator === 0) return null; // Lines are parallel
-
-        // Calculate intersection parameters
-        const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator;
-        const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denominator;
-
-        // Check if intersection occurs within both line segments
-        if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
-            return {
-                x: x1 + t * (x2 - x1),
-                z: y1 + t * (y2 - y1)
-            };
-        }
-
-        return null; // No intersection within line segments
-    }
-
     animate() {
         requestAnimationFrame(() => this.animate());
         this.updateKart();
