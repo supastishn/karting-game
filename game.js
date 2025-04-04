@@ -85,6 +85,7 @@ class Game {
         this.trackWidth = 130;   // Keep outer width the same
         this.trackLengthInner = 60;
         this.trackWidthInner = 30;   // Decreased from 100 to 30
+        this.racingLinePoints = []; // Array to store points defining the ideal racing line
 
         // Drift momentum parameters
         this.driftDirection = 0; // 1 for left, -1 for right
@@ -1412,52 +1413,97 @@ class Game {
             const nextTargetCheckpointIndex = (targetCheckpointIndex + 1) % this.totalCheckpoints;
 
             const currentCheckpoint = this.checkpoints[currentCheckpointIndex];
-            const targetCheckpoint = this.checkpoints[targetCheckpointIndex];
-            const nextTargetCheckpoint = this.checkpoints[nextTargetCheckpointIndex];
+            if (!this.racingLinePoints || this.racingLinePoints.length < 2) return; // Need path points
 
-            if (!targetCheckpoint || !nextTargetCheckpoint) return; // Ensure targets exist
+            // --- Path Following Logic ---
 
-            // --- Target Calculation for Curved Path ---
-            // 1. Vector from current bot position to target checkpoint center
-            const vecToTargetCenter = targetCheckpoint.position.clone().sub(bot.mesh.position);
-            vecToTargetCenter.y = 0; // Ignore height difference for pathing
-            const distanceToTargetCenter = vecToTargetCenter.length();
+            // 1. Find the closest point segment on the racing line path
+            let closestPointIndex = -1;
+            let minDistanceSq = Infinity;
+            const botPosXZ = new THREE.Vector2(bot.mesh.position.x, bot.mesh.position.z);
 
-            // 2. Vector representing the direction from target to the *next* target (approximates exit direction)
-            const targetExitDirection = nextTargetCheckpoint.position.clone().sub(targetCheckpoint.position);
-            targetExitDirection.y = 0;
-            targetExitDirection.normalize();
+            for (let i = 0; i < this.racingLinePoints.length; i++) {
+                const p1 = this.racingLinePoints[i];
+                const p2 = this.racingLinePoints[(i + 1) % this.racingLinePoints.length]; // Wrap around for loop
+                const p1_xz = new THREE.Vector2(p1.x, p1.z);
+                const p2_xz = new THREE.Vector2(p2.x, p2.z);
 
-            // 3. Calculate a sideways offset vector (perpendicular to exit direction)
-            const sidewaysOffsetVector = new THREE.Vector3(targetExitDirection.z, 0, -targetExitDirection.x);
+                // Project bot position onto the line segment
+                const segmentVector = new THREE.Vector2().subVectors(p2_xz, p1_xz);
+                const botToP1 = new THREE.Vector2().subVectors(botPosXZ, p1_xz);
+                let t = botToP1.dot(segmentVector) / segmentVector.lengthSq();
+                t = Math.max(0, Math.min(1, t)); // Clamp t to the segment
 
-            // --- Dynamic Offset Calculation ---
-            bot.dynamicOffsetTimer += deltaTime;
-            if (bot.dynamicOffsetTimer >= bot.dynamicOffsetUpdateTime) {
-                // Change the dynamic offset
-                const maxDynamicOffset = 4.0; // Max +/- offset (Increased from 2.5)
-                const changeAmount = (Math.random() - 0.5) * 3.0; // How much to change by (+/- 1.5)
-                bot.dynamicTargetOffset = Math.max(-maxDynamicOffset, Math.min(maxDynamicOffset, bot.dynamicTargetOffset + changeAmount));
-                bot.dynamicOffsetTimer = 0; // Reset timer
-                // console.log(`Bot ${this.bots.indexOf(bot)} dynamic offset changed to ${bot.dynamicTargetOffset.toFixed(2)}`);
+                const closestPointOnSegment = p1_xz.clone().addScaledVector(segmentVector, t);
+                const distSq = botPosXZ.distanceToSquared(closestPointOnSegment);
+
+                if (distSq < minDistanceSq) {
+                    minDistanceSq = distSq;
+                    closestPointIndex = i;
+                }
             }
 
-            // 4. Calculate the actual target point with the bot's static and dynamic offsets
+            // 2. Calculate look-ahead distance based on speed
+            const lookAheadDistance = bot.speed * 15 + 8; // Adjust multiplier and base distance as needed
+
+            // 3. Find the look-ahead point on the path
+            let currentDistance = 0;
+            let lookAheadPointIndex = closestPointIndex;
+            let lookAheadPoint = this.racingLinePoints[lookAheadPointIndex].clone(); // Start with closest point
+
+            while (currentDistance < lookAheadDistance) {
+                const p1 = this.racingLinePoints[lookAheadPointIndex];
+                const p2 = this.racingLinePoints[(lookAheadPointIndex + 1) % this.racingLinePoints.length];
+                const segmentLength = p1.distanceTo(p2);
+
+                if (currentDistance + segmentLength >= lookAheadDistance) {
+                    // Target point is on this segment
+                    const remainingDistance = lookAheadDistance - currentDistance;
+                    const t = remainingDistance / segmentLength;
+                    lookAheadPoint.lerpVectors(p1, p2, t);
+                    break;
+                } else {
+                    // Move to the next segment
+                    currentDistance += segmentLength;
+                    lookAheadPointIndex = (lookAheadPointIndex + 1) % this.racingLinePoints.length;
+                    lookAheadPoint = this.racingLinePoints[lookAheadPointIndex].clone(); // Ensure we don't overshoot last point
+                     // Safety break for very short paths or large lookahead distances
+                     if (lookAheadPointIndex === closestPointIndex && currentDistance > 0) break;
+                }
+            }
+
+
+            // 4. Calculate path direction at look-ahead point
+            const nextLookAheadIndex = (lookAheadPointIndex + 1) % this.racingLinePoints.length;
+            const pathDirection = this.racingLinePoints[nextLookAheadIndex].clone().sub(this.racingLinePoints[lookAheadPointIndex]);
+            pathDirection.y = 0;
+            pathDirection.normalize();
+
+            // 5. Calculate sideways offset vector (perpendicular to path direction)
+            const sidewaysOffsetVector = new THREE.Vector3(pathDirection.z, 0, -pathDirection.x);
+
+            // --- Dynamic Offset Calculation (same as before) ---
+            bot.dynamicOffsetTimer += deltaTime;
+            if (bot.dynamicOffsetTimer >= bot.dynamicOffsetUpdateTime) {
+                const maxDynamicOffset = 4.0;
+                const changeAmount = (Math.random() - 0.5) * 3.0;
+                bot.dynamicTargetOffset = Math.max(-maxDynamicOffset, Math.min(maxDynamicOffset, bot.dynamicTargetOffset + changeAmount));
+                bot.dynamicOffsetTimer = 0;
+            }
+
+            // 6. Calculate the final steering target point with offsets applied to the look-ahead point
             const totalOffset = bot.stats.targetOffset + bot.dynamicTargetOffset;
-            const offsetTargetPosition = targetCheckpoint.position.clone()
+            const steeringTargetPoint = lookAheadPoint.clone()
                 .addScaledVector(sidewaysOffsetVector, totalOffset);
-            offsetTargetPosition.y = bot.mesh.position.y; // Keep target at bot's height
+            steeringTargetPoint.y = bot.mesh.position.y; // Keep target at bot's height
 
-            // --- Steering ---
-            // Calculate vector towards the offset target point
-            const directionToOffsetTarget = offsetTargetPosition.clone().sub(bot.mesh.position);
-            directionToOffsetTarget.y = 0;
-            directionToOffsetTarget.normalize();
 
-            // Calculate desired angle
-            const desiredAngle = Math.atan2(directionToOffsetTarget.x, directionToOffsetTarget.z);
+            // --- Steering (same logic, new target) ---
+            const directionToTarget = steeringTargetPoint.clone().sub(bot.mesh.position);
+            directionToTarget.y = 0;
+            directionToTarget.normalize();
 
-            // Smoothly interpolate current angle towards desired angle
+            const desiredAngle = Math.atan2(directionToTarget.x, directionToTarget.z);
             let angleDifference = desiredAngle - bot.mesh.rotation.y;
             // Normalize angle difference to [-PI, PI]
             while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
