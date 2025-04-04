@@ -70,6 +70,7 @@ body {
     right: 0;
     display: flex;
     justify-content: space-between;
+    align-items: flex-end; /* Align items to the bottom */
     padding: 0 20px;
     pointer-events: none;
 }
