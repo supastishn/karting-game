@@ -260,6 +260,9 @@ class Game {
                 position: new THREE.Vector3(pos.x, 0.15, pos.z),
                 rotation: pos.rotation,
                 mesh: checkpoint,
+                // Calculate and store the correct normal vector for the checkpoint plane
+                // Normal points in the direction of travel through the gate: (sin(rot), 0, cos(rot))
+                normal: new THREE.Vector3(Math.sin(pos.rotation), 0, Math.cos(pos.rotation)),
                 posts: [leftPost, rightPost],
                 numberSprite: numberSprite
             };
@@ -595,29 +598,48 @@ class Game {
                 (leftPost.y + rightPost.y) / 2,
                 (leftPost.z + rightPost.z) / 2
             );
-            const distanceToCheckpoint = this.kart.position.distanceTo(checkpointCenter);
-            console.log(`Distance to Checkpoint ${i + 1}: ${distanceToCheckpoint.toFixed(2)} units`);
+            const checkpointNormal = checkpoint.normal;
+            const checkpointWidth = leftPost.distanceTo(rightPost); // Use distance between posts as width
 
-            // Get kart's previous and current position to form a line
-            const kartLine = {
-                start: this.lastKartPosition,
-                end: this.kart.position
-            };
-            
-            // Check if kart's movement line intersects with checkpoint line
-            const intersection = this.lineIntersection(
-                kartLine.start.x, kartLine.start.z,
-                kartLine.end.x, kartLine.end.z,
-                leftPost.x, leftPost.z,
-                rightPost.x, rightPost.z
+            // Vectors from checkpoint center to previous and current kart positions (using only XZ plane)
+            const vecToPrevKart = new THREE.Vector3(
+                this.lastKartPosition.x - checkpointCenter.x,
+                0,
+                this.lastKartPosition.z - checkpointCenter.z
+            );
+            const vecToCurrKart = new THREE.Vector3(
+                this.kart.position.x - checkpointCenter.x,
+                0,
+                this.kart.position.z - checkpointCenter.z
             );
 
-            if (intersection) {
-                // Log checkpoint entry
-                console.log(`%cEntered Checkpoint ${i + 1}!`, 'background: #4CAF50; color: white; padding: 4px; border-radius: 4px;');
-                console.debug({
-                    checkpoint: i + 1,
-                    kartPosition: {
+            // Project these vectors onto the checkpoint normal
+            const prevDot = vecToPrevKart.dot(checkpointNormal);
+            const currDot = vecToCurrKart.dot(checkpointNormal);
+
+            // Check if the kart crossed the plane (sign change, ignoring crossing exactly on the plane)
+            if (Math.sign(prevDot) !== Math.sign(currDot) && prevDot !== 0 && currDot !== 0) {
+
+                // Calculate the intersection point on the plane (using linear interpolation on XZ)
+                const t = prevDot / (prevDot - currDot); // Interpolation factor
+                const intersectionPoint = new THREE.Vector3().lerpVectors(this.lastKartPosition, this.kart.position, t);
+
+                // Vector from checkpoint center to intersection point
+                const vecCenterToIntersection = new THREE.Vector3().subVectors(intersectionPoint, checkpointCenter);
+
+                // Calculate the vector representing the gate line (perpendicular to the normal)
+                const checkpointDirection = new THREE.Vector3(checkpointNormal.z, 0, -checkpointNormal.x).normalize();
+
+                // Project the intersection vector onto the gate line vector
+                const distanceAlongGate = vecCenterToIntersection.dot(checkpointDirection);
+
+                // Check if the intersection happened within the gate width
+                if (Math.abs(distanceAlongGate) < checkpointWidth / 2) {
+                    // Log checkpoint entry
+                    console.log(`%cCrossed Checkpoint ${i + 1} Plane!`, 'background: #4CAF50; color: white; padding: 4px; border-radius: 4px;');
+                    console.debug({
+                        checkpoint: i + 1,
+                        kartPosition: {
                         x: this.kart.position.x.toFixed(2),
                         y: this.kart.position.y.toFixed(2),
                         z: this.kart.position.z.toFixed(2)
@@ -630,10 +652,12 @@ class Game {
                         x: rightPost.x.toFixed(2),
                         z: rightPost.z.toFixed(2)
                     },
-                    intersection: {
-                        x: intersection.x.toFixed(2),
-                        z: intersection.z.toFixed(2)
-                    }
+                    intersectionPoint: {
+                        x: intersectionPoint.x.toFixed(2),
+                        z: intersectionPoint.z.toFixed(2)
+                    },
+                    distanceAlongGate: distanceAlongGate.toFixed(2),
+                    checkpointWidth: checkpointWidth.toFixed(2)
                 });
 
                 // Check if this is the next expected checkpoint
