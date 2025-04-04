@@ -122,10 +122,27 @@ class Game {
         this.kart = new THREE.Mesh(kartGeometry, kartMaterial);
         this.scene.add(this.kart);
 
-        // Position kart at the start/finish line (first checkpoint)
-        const startCheckpoint = { x: 0, z: this.trackWidth / 4, rotation: Math.PI / 2 };
-        this.kart.position.set(startCheckpoint.x, 0.25, startCheckpoint.z);
-        this.kart.rotation.y = startCheckpoint.rotation;
+        // Define start parameters based on the first checkpoint definition
+        const startParams = { x: 0, z: this.trackWidth / 4, rotation: Math.PI / 2 };
+        const startOffsetDistance = 3.0; // How far behind the line to start
+
+        // Calculate the direction vector opposite to the starting rotation
+        const behindVector = new THREE.Vector3(
+            -Math.sin(startParams.rotation),
+            0,
+            -Math.cos(startParams.rotation)
+        );
+
+        // Calculate the final starting position
+        const finalStartPosition = new THREE.Vector3(
+            startParams.x + behindVector.x * startOffsetDistance,
+            0.25, // Kart height
+            startParams.z + behindVector.z * startOffsetDistance
+        );
+
+        // Position kart slightly behind the start/finish line
+        this.kart.position.copy(finalStartPosition);
+        this.kart.rotation.y = startParams.rotation;
 
         // Position camera initially behind the kart
         this.updateCamera(); // Call updateCamera once to set initial position based on kart
