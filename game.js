@@ -1277,8 +1277,9 @@ class Game {
         const racers = [];
 
         // Player data
-        const playerCheckpointIndex = this.lastCheckpoint === -1 ? 0 : this.lastCheckpoint; // Treat start as checkpoint 0 before first crossing
-        const playerNextCheckpointIndex = (this.lastCheckpoint + 1) % this.totalCheckpoints;
+        // Use index 3 (start/finish line) if no checkpoint crossed yet (-1)
+        const playerCheckpointIndex = this.lastCheckpoint === -1 ? 3 : this.lastCheckpoint;
+        const playerNextCheckpointIndex = (playerCheckpointIndex + 1) % this.totalCheckpoints;
         racers.push({
             id: 'player',
             lap: this.currentLap,
@@ -1296,17 +1297,22 @@ class Game {
             });
         });
 
-        // 2. Sort racers
+        // 2. Sort racers based on combined progress
         racers.sort((a, b) => {
-            // Sort by lap descending
-            if (a.lap !== b.lap) {
-                return b.lap - a.lap;
+            // Calculate a combined progress score (higher is better)
+            // Treat checkpoint 3 as higher than 0, 1, 2 within the same lap for sorting comparison
+            const effectiveCheckpointA = a.checkpointIndex === 3 ? this.totalCheckpoints : a.checkpointIndex;
+            const effectiveCheckpointB = b.checkpointIndex === 3 ? this.totalCheckpoints : b.checkpointIndex;
+
+            const progressA = a.lap * (this.totalCheckpoints + 1) + effectiveCheckpointA;
+            const progressB = b.lap * (this.totalCheckpoints + 1) + effectiveCheckpointB;
+
+
+            if (progressA !== progressB) {
+                return progressB - progressA; // Higher progress first
             }
-            // If lap is same, sort by checkpoint index descending
-            if (a.checkpointIndex !== b.checkpointIndex) {
-                return b.checkpointIndex - a.checkpointIndex;
-            }
-            // If checkpoint is same, sort by distance to next ascending
+
+            // If progress is identical (same lap and effective checkpoint), sort by distance ascending
             return a.distanceToNext - b.distanceToNext;
         });
 
