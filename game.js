@@ -98,13 +98,14 @@ class Game {
         this.checkpoints = []; // Will store checkpoint coordinates
         this.raceFinished = false;
         this.bots = []; // Array to hold bot objects
-        
-        // Lap display element - moved up in constructor for immediate visibility
-        this.lapDisplay = document.createElement('div');
-        this.lapDisplay.className = 'lap-counter';
-        document.body.appendChild(this.lapDisplay);
+        this.playerPosition = 1; // Initialize player position
+
+        // UI Elements
+        this.lapDisplay = document.querySelector('.lap-counter'); // Use existing element
+        this.positionDisplay = document.querySelector('.position-display'); // Get position element
         this.updateLapCounter(); // Call immediately to show initial lap count
-        
+        this.updateScoreboard(); // Call immediately to show initial position
+
         this.setupScene();
         this.createBots(3); // Create 3 bots
         this.setupControls();
@@ -219,6 +220,7 @@ class Game {
             this.bots.push({
                 mesh: botMesh,
                 speed: 0, // Start stationary
+                lap: 1, // Start on lap 1
                 targetCheckpointIndex: 1,
                 currentCheckpointIndex: 0,
                 stats: botStats // Store the unique stats
@@ -810,6 +812,73 @@ class Game {
     }
     }
 
+    // Helper to get ordinal suffix (1st, 2nd, 3rd, 4th)
+    getOrdinalSuffix(n) {
+        const s = ["th", "st", "nd", "rd"];
+        const v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+
+    // Helper to calculate distance to the center of the next checkpoint
+    calculateDistanceToNextCheckpoint(currentPosition, nextCheckpointIndex) {
+        if (!this.checkpoints || this.checkpoints.length === 0) return Infinity;
+        const targetCheckpoint = this.checkpoints[nextCheckpointIndex];
+        if (!targetCheckpoint) return Infinity;
+        // Use XZ distance for ranking to ignore hop height
+        const dx = currentPosition.x - targetCheckpoint.position.x;
+        const dz = currentPosition.z - targetCheckpoint.position.z;
+        return Math.sqrt(dx * dx + dz * dz);
+    }
+
+    updateScoreboard() {
+        if (this.raceFinished || !this.checkpoints || this.checkpoints.length === 0) return;
+
+        // 1. Create array of all racers (player + bots) with their progress data
+        const racers = [];
+
+        // Player data
+        const playerCheckpointIndex = this.lastCheckpoint === -1 ? 0 : this.lastCheckpoint; // Treat start as checkpoint 0 before first crossing
+        const playerNextCheckpointIndex = (this.lastCheckpoint + 1) % this.totalCheckpoints;
+        racers.push({
+            id: 'player',
+            lap: this.currentLap,
+            checkpointIndex: playerCheckpointIndex,
+            distanceToNext: this.calculateDistanceToNextCheckpoint(this.kart.position, playerNextCheckpointIndex)
+        });
+
+        // Bot data
+        this.bots.forEach((bot, index) => {
+            racers.push({
+                id: `bot_${index}`,
+                lap: bot.lap,
+                checkpointIndex: bot.currentCheckpointIndex,
+                distanceToNext: this.calculateDistanceToNextCheckpoint(bot.mesh.position, bot.targetCheckpointIndex)
+            });
+        });
+
+        // 2. Sort racers
+        racers.sort((a, b) => {
+            // Sort by lap descending
+            if (a.lap !== b.lap) {
+                return b.lap - a.lap;
+            }
+            // If lap is same, sort by checkpoint index descending
+            if (a.checkpointIndex !== b.checkpointIndex) {
+                return b.checkpointIndex - a.checkpointIndex;
+            }
+            // If checkpoint is same, sort by distance to next ascending
+            return a.distanceToNext - b.distanceToNext;
+        });
+
+        // 3. Find player's position
+        const playerRank = racers.findIndex(racer => racer.id === 'player') + 1;
+        this.playerPosition = playerRank;
+
+        // 4. Update display
+        this.positionDisplay.textContent = this.getOrdinalSuffix(this.playerPosition);
+    }
+
+
     updateBots() {
         const arrivalThreshold = 3.0; // How close the bot needs to be to the *actual* checkpoint center
         const lookAheadDistance = 10.0; // How far ahead the bot looks for steering
@@ -887,8 +956,15 @@ class Game {
             // --- Checkpoint Advancement ---
             // Check distance to the *actual* checkpoint center, not the offset one
             if (distanceToTargetCenter < arrivalThreshold) {
-                bot.currentCheckpointIndex = targetCheckpointIndex;
+                const crossedCheckpointIndex = targetCheckpointIndex; // Store the index it just crossed
+                bot.currentCheckpointIndex = crossedCheckpointIndex;
                 bot.targetCheckpointIndex = nextTargetCheckpointIndex;
+
+                // Check for lap completion (crossing checkpoint 0)
+                if (crossedCheckpointIndex === 0) {
+                    bot.lap++;
+                    // console.log(`Bot ${this.bots.indexOf(bot)} completed lap, now on lap ${bot.lap}`);
+                }
                 // console.log(`Bot reached checkpoint ${bot.currentCheckpointIndex + 1}, next target: ${bot.targetCheckpointIndex + 1}`);
             }
         });
@@ -899,6 +975,7 @@ class Game {
         this.updateKart();
         this.updateBots(); // Update bots each frame
         this.checkCheckpoints();
+        this.updateScoreboard(); // Update scoreboard each frame
         this.renderer.render(this.scene, this.camera);
     }
 }
@@ -908,9 +985,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const difficultyScreen = document.getElementById('difficulty-selection');
     const gameContainer = document.getElementById('game-container');
     const speedometer = document.getElementById('speedometer');
-    const lapCounter = document.querySelector('.lap-counter');
+    const raceInfo = document.querySelector('.race-info'); // Get the container
     const mobileControls = document.getElementById('mobile-controls');
     const difficultyButtons = document.querySelectorAll('.difficulty-button');
+
+    // Ensure race info is hidden initially if JS runs before CSS potentially
+    if (raceInfo) raceInfo.classList.add('hidden');
+
 
     difficultyButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -922,8 +1003,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show game elements
             gameContainer.classList.remove('hidden');
             speedometer.classList.remove('hidden');
-            lapCounter.classList.remove('hidden');
+            // Select the container for lap/position
+            const raceInfo = document.querySelector('.race-info');
+            if (raceInfo) raceInfo.classList.remove('hidden');
             mobileControls.classList.remove('hidden');
+
 
             // Start the game with the selected difficulty
             new Game(selectedDifficulty);
