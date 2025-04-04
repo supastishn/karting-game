@@ -345,7 +345,13 @@ class Game {
                 lap: 1, // Start on lap 1
                 targetCheckpointIndex: 1,
                 currentCheckpointIndex: 0,
-                stats: botStats // Store the unique stats
+                stats: botStats, // Store the unique stats
+                // Drift/Boost state for bots
+                isDrifting: false,
+                driftTime: 0,
+                miniTurboStage: 0,
+                boosting: false,
+                boostTime: 0
             });
         }
     }
@@ -1017,7 +1023,7 @@ class Game {
     }
 
 
-    updateBots() {
+    updateBots(deltaTime) { // Accept deltaTime
         // Only allow updates if the race is active
         if (this.gameState !== 'racing') return;
 
@@ -1075,9 +1081,66 @@ class Game {
             const turnAmount = Math.max(-bot.stats.turnRate, Math.min(bot.stats.turnRate, angleDifference));
             bot.mesh.rotation.y += turnAmount;
 
+            // --- Bot Drift Logic ---
+            const driftTurnThreshold = Math.PI / 6; // Angle difference to initiate/maintain drift (30 degrees)
+            const driftSpeedThreshold = bot.stats.maxSpeed * 0.5; // Minimum speed to drift
+
+            // Decide whether to start/stop drifting
+            if (!bot.isDrifting && Math.abs(angleDifference) > driftTurnThreshold && bot.speed > driftSpeedThreshold) {
+                // Start drifting
+                bot.isDrifting = true;
+                bot.driftTime = 0;
+                bot.miniTurboStage = 0;
+                // console.log(`Bot ${this.bots.indexOf(bot)} started drifting`);
+            } else if (bot.isDrifting && Math.abs(angleDifference) < driftTurnThreshold * 0.8) { // Stop if angle straightens out a bit
+                // Stop drifting - check for boost release
+                bot.isDrifting = false;
+                if (bot.driftTime > this.miniTurboThresholds[1]) { // Check if stage 1 (blue) or higher was reached
+                    bot.boosting = true;
+                    // Use player's boost durations for now
+                    bot.boostTime = this.miniTurboBoostDurations[bot.miniTurboStage - 1];
+                    // console.log(`Bot ${this.bots.indexOf(bot)} released boost stage ${bot.miniTurboStage}`);
+                }
+                bot.driftTime = 0;
+                bot.miniTurboStage = 0;
+            }
+
+            // Charge mini-turbo while drifting
+            if (bot.isDrifting) {
+                const chargeRate = Math.min(1.0, Math.abs(angleDifference) / (Math.PI / 4)); // Charge faster for sharper turns (up to 45 deg)
+                bot.driftTime += deltaTime * chargeRate; // Use deltaTime
+
+                // Update mini-turbo stage based on drift time
+                for (let i = this.miniTurboThresholds.length - 1; i >= 0; i--) {
+                    if (bot.driftTime >= this.miniTurboThresholds[i]) {
+                        bot.miniTurboStage = i;
+                        break;
+                    }
+                }
+                // Optional: Add bot spark emission here if desired
+            }
+
+            // Update boost timer
+            if (bot.boosting) {
+                bot.boostTime -= deltaTime;
+                if (bot.boostTime <= 0) {
+                    bot.boosting = false;
+                    // console.log(`Bot ${this.bots.indexOf(bot)} boost ended`);
+                }
+            }
+
             // --- Speed and Movement ---
-            // Reduce max speed based on the sharpness of the required turn
             let currentMaxSpeed = bot.stats.maxSpeed;
+            // Apply drift speed reduction
+            if (bot.isDrifting) {
+                currentMaxSpeed *= this.driftSpeedMultiplier; // Use player's drift multiplier
+            }
+            // Apply boost speed increase
+            if (bot.boosting) {
+                currentMaxSpeed *= this.boostMultiplier; // Use player's boost multiplier
+            }
+
+            // Reduce max speed based on the sharpness of the required turn (apply *after* drift/boost mods)
             // Calculate how much the bot needs to turn (0 = straight, 1 = 90 degrees or more)
             const turnSharpnessFactor = Math.min(1.0, Math.abs(angleDifference) / (Math.PI / 2));
             // Reduce speed more for sharper turns (e.g., up to 50% reduction for a 90+ degree turn)
@@ -1120,7 +1183,7 @@ class Game {
         // Only run game logic if racing
         if (this.gameState === 'racing') {
             this.updateKart(); // Pass deltaTime if needed inside updateKart
-            this.updateBots(); // Pass deltaTime if needed inside updateBots
+            this.updateBots(deltaTime); // Pass deltaTime to updateBots
             this.checkCheckpoints();
             this.updateScoreboard();
             this.updateDriftSparks(deltaTime); // Update spark particles
