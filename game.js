@@ -49,10 +49,7 @@ class Game {
         this.boosting = false;
 
         // Visual feedback
-        this.sparkColors = ['#0099ff', '#ff6600', '#cc00ff'];
-        this.sparkElement = document.createElement('div');
-        this.sparkElement.className = 'spark-indicator';
-        document.body.appendChild(this.sparkElement);
+        this.sparkColors = [new THREE.Color(0x0099ff), new THREE.Color(0xff6600), new THREE.Color(0xcc00ff)]; // Use THREE.Color
 
         // Speedometer element
         this.speedDisplay = document.querySelector('.speed-value');
@@ -69,7 +66,15 @@ class Game {
         this.lastKartPosition = new THREE.Vector3();
         this.cameraHeight = 5; // New parameter for camera height
         this.cameraDistance = -8; // New parameter for camera distance
-        
+
+        // Drift Sparks Particle System
+        this.driftSparks = []; // Array to hold active spark data
+        this.maxSparks = 200; // Max number of spark particles
+        this.sparkLifetime = 0.3; // Seconds a spark lives
+        this.sparkEmitRate = 50; // Sparks per second during drift
+        this.lastSparkEmitTime = 0;
+        this.setupSparkParticles(); // Initialize the particle system
+
         // Speed transition parameters
         this.currentSpeedLimit = this.maxSpeed;
         this.targetSpeedLimit = this.maxSpeed;
@@ -160,6 +165,100 @@ class Game {
         this.camera.position.copy(this.cameraTargetPosition); // Set camera position directly without lerp for the first frame
         this.camera.lookAt(this.kart.position);
     }
+
+    setupSparkParticles() {
+        const positions = new Float32Array(this.maxSparks * 3);
+        const colors = new Float32Array(this.maxSparks * 3);
+
+        this.sparkGeometry = new THREE.BufferGeometry();
+        this.sparkGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        this.sparkGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const sparkMaterial = new THREE.PointsMaterial({
+            size: 0.2,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            depthWrite: false, // Prevent sparks hiding behind transparent objects
+            blending: THREE.AdditiveBlending // Brighter where sparks overlap
+        });
+
+        this.sparkPoints = new THREE.Points(this.sparkGeometry, sparkMaterial);
+        this.scene.add(this.sparkPoints);
+    }
+
+    emitDriftSpark(color) {
+        if (this.driftSparks.length >= this.maxSparks) return; // Don't exceed max
+
+        // Calculate position behind rear wheels (adjust offsets as needed)
+        const rearOffset = -1.2; // How far back from kart center
+        const sideOffset = 0.4; // How far sideways from kart center
+        const heightOffset = 0.1; // How high off the ground
+
+        // Get kart's orientation vectors
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.kart.quaternion);
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.kart.quaternion);
+
+        // Alternate sides for sparks
+        const sideSign = (this.driftSparks.length % 2 === 0) ? 1 : -1;
+
+        const position = this.kart.position.clone()
+            .addScaledVector(forward, rearOffset)
+            .addScaledVector(right, sideOffset * sideSign)
+            .add(new THREE.Vector3(0, heightOffset, 0));
+
+        // Calculate velocity (mostly backwards, slightly outwards and upwards)
+        const baseVelocity = forward.clone().multiplyScalar(-this.speed * 5 - 2); // Backwards based on speed
+        const outwardVelocity = right.clone().multiplyScalar(sideSign * (Math.random() * 2 + 1)); // Sideways spread
+        const upwardVelocity = new THREE.Vector3(0, Math.random() * 2 + 1, 0); // Upward spread
+
+        const velocity = baseVelocity.add(outwardVelocity).add(upwardVelocity);
+
+        this.driftSparks.push({
+            position: position,
+            velocity: velocity,
+            lifetime: this.sparkLifetime,
+            color: color
+        });
+    }
+
+    updateDriftSparks(deltaTime) {
+        const positions = this.sparkPoints.geometry.attributes.position.array;
+        const colors = this.sparkPoints.geometry.attributes.color.array;
+        let activeSparkCount = 0;
+
+        for (let i = this.driftSparks.length - 1; i >= 0; i--) {
+            const spark = this.driftSparks[i];
+            spark.lifetime -= deltaTime;
+
+            if (spark.lifetime <= 0) {
+                this.driftSparks.splice(i, 1); // Remove dead spark
+            } else {
+                // Update position
+                spark.position.addScaledVector(spark.velocity, deltaTime);
+                // Apply simple gravity
+                spark.velocity.y -= 9.8 * deltaTime; // Adjust gravity strength as needed
+
+                // Update geometry attributes for active sparks
+                const index = activeSparkCount * 3;
+                positions[index] = spark.position.x;
+                positions[index + 1] = spark.position.y;
+                positions[index + 2] = spark.position.z;
+
+                colors[index] = spark.color.r;
+                colors[index + 1] = spark.color.g;
+                colors[index + 2] = spark.color.b;
+
+                activeSparkCount++;
+            }
+        }
+
+        // Update draw range and tell Three.js the attributes have changed
+        this.sparkPoints.geometry.setDrawRange(0, activeSparkCount);
+        this.sparkPoints.geometry.attributes.position.needsUpdate = true;
+        this.sparkPoints.geometry.attributes.color.needsUpdate = true;
+    }
+
 
     startCountdown() {
         this.countdownDisplay.textContent = this.countdownValue;
@@ -535,7 +634,8 @@ class Game {
             }
 
             // Apply charge rate to drift time
-            this.driftTime += (1 / 60) * chargeRate; // Assuming 60fps
+            const deltaTime = 1 / 60; // Assuming 60fps, replace with actual delta time if available
+            this.driftTime += deltaTime * chargeRate;
 
             // Update mini-turbo stage based on drift time
             for (let i = this.miniTurboThresholds.length - 1; i >= 0; i--) {
@@ -545,11 +645,7 @@ class Game {
                 }
             }
 
-            // Update visual feedback
-            if (this.miniTurboStage > 0) {
-                this.sparkElement.style.display = 'block';
-                this.sparkElement.style.backgroundColor = this.sparkColors[this.miniTurboStage - 1];
-            }
+            // Visual feedback handled by particle emission below
         } else {
             // If we stop drifting, check if we should apply boost
             if (this.driftTime > this.miniTurboThresholds[1]) {
@@ -560,7 +656,7 @@ class Game {
             }
             this.driftTime = 0;
             this.miniTurboStage = 0;
-            this.sparkElement.style.display = 'none';
+            // No need to hide HTML element anymore
         }
 
         // Update boost
@@ -1008,12 +1104,15 @@ class Game {
         // Keep requesting frames regardless of state to allow rendering during countdown
         requestAnimationFrame(() => this.animate());
 
+        const deltaTime = 1 / 60; // Placeholder: Ideally calculate actual time delta
+
         // Only run game logic if racing
         if (this.gameState === 'racing') {
-            this.updateKart();
-            this.updateBots();
+            this.updateKart(); // Pass deltaTime if needed inside updateKart
+            this.updateBots(); // Pass deltaTime if needed inside updateBots
             this.checkCheckpoints();
             this.updateScoreboard();
+            this.updateDriftSparks(deltaTime); // Update spark particles
         } else if (this.gameState === 'countdown') {
             // Keep camera updated during countdown
             this.updateCamera();
