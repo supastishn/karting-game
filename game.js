@@ -1278,6 +1278,116 @@ class Game {
         this.positionDisplay.textContent = this.getOrdinalSuffix(this.playerPosition);
     }
 
+    // --- Item System Logic ---
+
+    updateItemDisplay() {
+        if (this.playerItem) {
+            let itemSymbol = '?';
+            if (this.playerItem === 'mushroom') itemSymbol = '🍄';
+            if (this.playerItem === 'banana') itemSymbol = '🍌';
+            this.itemNameDisplay.textContent = itemSymbol;
+            this.itemDisplay.classList.remove('hidden');
+            this.useItemButton.classList.remove('hidden'); // Show use button if item held
+        } else {
+            this.itemNameDisplay.textContent = '';
+            this.itemDisplay.classList.add('hidden');
+            this.useItemButton.classList.add('hidden'); // Hide use button if no item
+        }
+    }
+
+    giveItem(racer) {
+        // Check if racer is player or bot
+        const isPlayer = (racer.mesh === this.kart);
+
+        if (isPlayer) {
+            if (this.playerItem === null) { // Only give item if player doesn't have one
+                this.playerItem = this.itemTypes[Math.floor(Math.random() * this.itemTypes.length)];
+                console.log(`Player got item: ${this.playerItem}`);
+                this.updateItemDisplay();
+            }
+        } else { // It's a bot
+             if (racer.item === null) {
+                 racer.item = this.itemTypes[Math.floor(Math.random() * this.itemTypes.length)];
+                 console.log(`Bot ${this.bots.indexOf(racer)} got item: ${racer.item}`);
+             }
+        }
+    }
+
+    useItem(racer) {
+        const isPlayer = (racer.mesh === this.kart);
+        const itemToUse = isPlayer ? this.playerItem : racer.item;
+
+        if (!itemToUse) return; // No item to use
+
+        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used ${itemToUse}`);
+
+        if (itemToUse === 'banana') {
+            this.useBanana(racer);
+        } else if (itemToUse === 'mushroom') {
+            this.useMushroom(racer);
+        }
+
+        // Clear the item after use
+        if (isPlayer) {
+            this.playerItem = null;
+            this.updateItemDisplay();
+        } else {
+            racer.item = null;
+        }
+    }
+
+    useBanana(racer) {
+        const bananaGeometry = new THREE.SphereGeometry(0.5, 8, 6); // Simple sphere for banana
+        const bananaMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const bananaMesh = new THREE.Mesh(bananaGeometry, bananaMaterial);
+
+        // Position slightly behind the racer
+        const backwardOffset = -2.0;
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(racer.mesh.quaternion);
+        const dropPosition = racer.mesh.position.clone().addScaledVector(forward, backwardOffset);
+        dropPosition.y = 0.3; // Place on track
+
+        bananaMesh.position.copy(dropPosition);
+        this.scene.add(bananaMesh);
+
+        this.droppedBananas.push({ mesh: bananaMesh, owner: racer }); // Store mesh and who dropped it
+    }
+
+    useMushroom(racer) {
+        const isPlayer = (racer.mesh === this.kart);
+        if (isPlayer) {
+            this.playerMushroomBoostDuration = this.mushroomBoostTime;
+            this.boosting = false; // Mushroom overrides mini-turbo boost
+            this.boostTime = 0;
+        } else {
+            racer.mushroomBoostDuration = this.mushroomBoostTime;
+            racer.boosting = false; // Mushroom overrides mini-turbo boost
+            racer.boostTime = 0;
+        }
+    }
+
+    applyBananaHit(racer) {
+        const isPlayer = (racer.mesh === this.kart);
+        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit a banana!`);
+
+        if (isPlayer) {
+            this.playerStunDuration = this.bananaStunTime;
+            this.speed = 0; // Stop immediately
+            this.playerMushroomBoostDuration = 0; // Cancel mushroom boost
+            this.boosting = false; // Cancel mini-turbo boost
+            this.isDrifting = false; // Cancel drift
+            this.driftActive = false;
+        } else {
+            racer.stunDuration = this.bananaStunTime;
+            racer.speed = 0;
+            racer.mushroomBoostDuration = 0;
+            racer.boosting = false;
+            racer.isDrifting = false;
+        }
+    }
+
+    // --- End Item System Logic ---
+
 
     updateBots(deltaTime) { // Accept deltaTime
         // Only allow updates if the race is active
