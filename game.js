@@ -1647,8 +1647,14 @@ class Game {
 
 
             // --- Checkpoint Advancement ---
-            // Check distance to the *actual* checkpoint center, not the offset one
-            if (distanceToTargetCenter < arrivalThreshold) {
+            // Calculate distance to the target checkpoint's center (XZ plane)
+            const targetCheckpoint = this.checkpoints[targetCheckpointIndex];
+            const dx = bot.mesh.position.x - targetCheckpoint.position.x;
+            const dz = bot.mesh.position.z - targetCheckpoint.position.z;
+            const currentDistanceToTargetCenter = Math.sqrt(dx * dx + dz * dz);
+
+            // Check distance to the *actual* checkpoint center
+            if (currentDistanceToTargetCenter < arrivalThreshold) {
                 const crossedCheckpointIndex = targetCheckpointIndex; // Store the index it just crossed
                 bot.currentCheckpointIndex = crossedCheckpointIndex;
                 bot.targetCheckpointIndex = nextTargetCheckpointIndex;
