@@ -315,16 +315,16 @@ class Game {
                     botStats = {
                         maxSpeed: this.maxSpeed * (0.80 + Math.random() * 0.2), // 80-100%
                         acceleration: this.acceleration * (1.0 + Math.random() * 0.4), // 1.0x - 1.4x
-                        turnRate: this.turnSpeed * (2.0 + Math.random() * 1.0), // 2.0x - 3.0x
-                        targetOffset: (Math.random() - 0.5) * 10 // +/- 5.0 (was 8)
+                        turnRate: this.turnSpeed * (1.8 + Math.random() * 1.4), // 1.8x - 3.2x (Increased variation)
+                        targetOffset: (Math.random() - 0.5) * 14 // +/- 7.0 (Increased range)
                     };
                     break;
                 case 'hard':
                     botStats = {
                         maxSpeed: this.maxSpeed * (0.90 + Math.random() * 0.2), // 90-110%
                         acceleration: this.acceleration * (1.1 + Math.random() * 0.4), // 1.1x - 1.5x
-                        turnRate: this.turnSpeed * (2.5 + Math.random() * 1.0), // 2.5x - 3.5x
-                        targetOffset: (Math.random() - 0.5) * 6 // +/- 3.0 (was 3)
+                        turnRate: this.turnSpeed * (2.2 + Math.random() * 1.6), // 2.2x - 3.8x (Increased variation)
+                        targetOffset: (Math.random() - 0.5) * 10 // +/- 5.0 (Increased range)
                     };
                     break;
                 case 'easy':
@@ -332,8 +332,8 @@ class Game {
                     botStats = {
                         maxSpeed: this.maxSpeed * (0.65 + Math.random() * 0.2), // 65-85%
                         acceleration: this.acceleration * (0.8 + Math.random() * 0.4),
-                        turnRate: this.turnSpeed * (1.5 + Math.random() * 1.0), // 1.5x - 2.5x
-                        targetOffset: (Math.random() - 0.5) * 18 // +/- 9.0 (was 15)
+                        turnRate: this.turnSpeed * (1.2 + Math.random() * 1.6), // 1.2x - 2.8x (Increased variation)
+                        targetOffset: (Math.random() - 0.5) * 22 // +/- 11.0 (Increased range)
                     };
                     break;
             }
@@ -354,8 +354,8 @@ class Game {
                 boostTime: 0,
                 // Dynamic path variation
                 dynamicTargetOffset: 0, // Current dynamic offset value
-                dynamicOffsetTimer: Math.random() * 0.5, // Timer to control how often dynamic offset changes (random start)
-                dynamicOffsetUpdateTime: 0.5 + Math.random() * 0.5 // How often to change offset (0.5-1.0s)
+                dynamicOffsetTimer: Math.random() * 1.0, // Timer to control how often dynamic offset changes (random start 0-1s)
+                dynamicOffsetUpdateTime: 0.4 + Math.random() * 0.8 // How often to change offset (0.4-1.2s)
             });
         }
     }
@@ -1064,9 +1064,9 @@ class Game {
             // --- Dynamic Offset Calculation ---
             bot.dynamicOffsetTimer += deltaTime;
             if (bot.dynamicOffsetTimer >= bot.dynamicOffsetUpdateTime) {
-                // Change the dynamic offset slightly
-                const maxDynamicOffset = 2.5; // Max +/- offset
-                const changeAmount = (Math.random() - 0.5) * 2.0; // How much to change by (+/- 1.0)
+                // Change the dynamic offset
+                const maxDynamicOffset = 4.0; // Max +/- offset (Increased from 2.5)
+                const changeAmount = (Math.random() - 0.5) * 3.0; // How much to change by (+/- 1.5)
                 bot.dynamicTargetOffset = Math.max(-maxDynamicOffset, Math.min(maxDynamicOffset, bot.dynamicTargetOffset + changeAmount));
                 bot.dynamicOffsetTimer = 0; // Reset timer
                 // console.log(`Bot ${this.bots.indexOf(bot)} dynamic offset changed to ${bot.dynamicTargetOffset.toFixed(2)}`);
@@ -1159,11 +1159,19 @@ class Game {
             // Reduce max speed based on the sharpness of the required turn (apply *after* drift/boost mods)
             // Calculate how much the bot needs to turn (0 = straight, 1 = 90 degrees or more)
             const turnSharpnessFactor = Math.min(1.0, Math.abs(angleDifference) / (Math.PI / 2));
-            // Reduce speed more for sharper turns (e.g., up to 50% reduction for a 90+ degree turn)
-            currentMaxSpeed *= (1.0 - turnSharpnessFactor * 0.5);
+            // Reduce speed for sharper turns, but slightly less aggressively (e.g., up to 40% reduction for 90+ deg)
+            currentMaxSpeed *= (1.0 - turnSharpnessFactor * 0.4); // Was 0.5
 
             // Accelerate towards (potentially reduced) max speed
-            bot.speed = Math.min(currentMaxSpeed, bot.speed + bot.stats.acceleration);
+            // Allow slight overspeeding temporarily if boosting/coming out of drift before speed reduction fully applies
+            const targetSpeed = currentMaxSpeed;
+            if (bot.speed < targetSpeed) {
+                 bot.speed = Math.min(targetSpeed, bot.speed + bot.stats.acceleration);
+            } else if (bot.speed > targetSpeed) {
+                // Decelerate towards target speed if currently faster (e.g., after boost ends)
+                // Use a deceleration factor slightly faster than normal acceleration
+                bot.speed = Math.max(targetSpeed, bot.speed - bot.stats.acceleration * 1.5);
+            }
 
             // Move bot forward based on its current rotation
             const moveDirection = new THREE.Vector3(
