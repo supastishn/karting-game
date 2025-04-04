@@ -354,8 +354,8 @@ class Game {
                 boostTime: 0,
                 // Dynamic path variation
                 dynamicTargetOffset: 0, // Current dynamic offset value
-                dynamicOffsetTimer: Math.random() * 1.0, // Timer to control how often dynamic offset changes (random start 0-1s)
-                dynamicOffsetUpdateTime: 0.4 + Math.random() * 0.8 // How often to change offset (0.4-1.2s)
+                dynamicOffsetTimer: Math.random() * 0.5, // Timer to control how often dynamic offset changes (random start 0-0.5s)
+                dynamicOffsetUpdateTime: 0.2 + Math.random() * 0.4 // How often to change offset (0.2-0.6s) - More frequent updates
             });
         }
     }
