@@ -1306,22 +1306,32 @@ class Game {
             });
         });
 
-        // 2. Sort racers based on combined progress
+        // 2. Sort racers based on lap, then checkpoint (handling wrap-around), then distance
         racers.sort((a, b) => {
-            // Calculate a combined progress score (higher is better)
-            // Treat checkpoint 3 as higher than 0, 1, 2 within the same lap for sorting comparison
-            const effectiveCheckpointA = a.checkpointIndex === 3 ? this.totalCheckpoints : a.checkpointIndex;
-            const effectiveCheckpointB = b.checkpointIndex === 3 ? this.totalCheckpoints : b.checkpointIndex;
-
-            const progressA = a.lap * (this.totalCheckpoints + 1) + effectiveCheckpointA;
-            const progressB = b.lap * (this.totalCheckpoints + 1) + effectiveCheckpointB;
-
-
-            if (progressA !== progressB) {
-                return progressB - progressA; // Higher progress first
+            // 1. Sort by lap descending
+            if (a.lap !== b.lap) {
+                return b.lap - a.lap;
             }
 
-            // If progress is identical (same lap and effective checkpoint), sort by distance ascending
+            // 2. Laps are the same, sort by checkpoint index, handling wrap-around
+            const idxA = a.checkpointIndex;
+            const idxB = b.checkpointIndex;
+
+            // Special case: If one is at finish (3) and other is not, the non-finish is ahead *within the same lap*
+            // This means the racer who has crossed 0, 1, or 2 is ahead of the racer still at 3 from the previous lap completion.
+            if (idxA === 3 && idxB !== 3) {
+                return 1; // B is ahead (lower index but effectively further along this lap)
+            }
+            if (idxB === 3 && idxA !== 3) {
+                return -1; // A is ahead
+            }
+
+            // Normal case (neither is 3, or both are 3): Higher checkpoint index is ahead
+            if (idxA !== idxB) {
+                return idxB - idxA;
+            }
+
+            // 3. Checkpoints are also the same, sort by distance ascending (closer is better)
             return a.distanceToNext - b.distanceToNext;
         });
 
