@@ -55,9 +55,18 @@ class Game {
         this.speedDisplay = document.querySelector('.speed-value');
         this.maxSpeedKmh = 180; // Maximum speed in km/h for display purposes
 
-        // Prevent default touch behaviors
-        document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-        document.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+        // Prevent default touch behaviors - Modified to check for Eruda elements
+        document.addEventListener('touchmove', (e) => {
+            // Skip preventDefault if touching Eruda elements
+            if (this.isErudaElement(e.target)) return;
+            e.preventDefault();
+        }, { passive: false });
+        
+        document.addEventListener('touchstart', (e) => {
+            // Skip preventDefault if touching Eruda elements
+            if (this.isErudaElement(e.target)) return;
+            e.preventDefault();
+        }, { passive: false });
 
         // Camera smoothing parameters
         this.cameraTargetPosition = new THREE.Vector3();
@@ -142,6 +151,26 @@ class Game {
         // Don't start animate immediately, start countdown first
         this.startCountdown();
     }
+    
+    // Helper function to check if an element is part of Eruda
+    isErudaElement(element) {
+        if (!element) return false;
+        
+        // Check if the element or any parent has eruda-related class
+        let current = element;
+        while (current) {
+            // Check for common Eruda class names or IDs
+            if (current.className && 
+                (typeof current.className === 'string' && 
+                 (current.className.includes('eruda') || 
+                  current.id === 'eruda' ||
+                  current.getAttribute('data-eruda')))) {
+                return true;
+            }
+            current = current.parentElement;
+        }
+        return false;
+    }
 
     setupScene() {
         // Create larger ground
@@ -224,27 +253,32 @@ class Game {
         const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(kartObject.quaternion);
         const right = new THREE.Vector3(1, 0, 0).applyQuaternion(kartObject.quaternion);
 
-        // Alternate sides for sparks
-        const sideSign = (this.driftSparks.length % 2 === 0) ? 1 : -1;
+        // Always emit sparks on both sides instead of alternating
+        const sides = [-1, 1]; // Left and right side
+        
+        for (const sideSign of sides) {
+            // Skip if we've hit max sparks
+            if (this.driftSparks.length >= this.maxSparks) break;
+            
+            const position = kartObject.position.clone() // Use kartObject's position
+                .addScaledVector(forward, rearOffset)
+                .addScaledVector(right, sideOffset * sideSign)
+                .add(new THREE.Vector3(0, heightOffset, 0));
 
-        const position = kartObject.position.clone() // Use kartObject's position
-            .addScaledVector(forward, rearOffset)
-            .addScaledVector(right, sideOffset * sideSign)
-            .add(new THREE.Vector3(0, heightOffset, 0));
+            // Calculate velocity (mostly backwards, slightly outwards and upwards) based on kartSpeed
+            const baseVelocity = forward.clone().multiplyScalar(-kartSpeed * 5 - 2); // Use kartSpeed
+            const outwardVelocity = right.clone().multiplyScalar(sideSign * (Math.random() * 2 + 1)); // Sideways spread
+            const upwardVelocity = new THREE.Vector3(0, Math.random() * 2 + 1, 0); // Upward spread
 
-        // Calculate velocity (mostly backwards, slightly outwards and upwards) based on kartSpeed
-        const baseVelocity = forward.clone().multiplyScalar(-kartSpeed * 5 - 2); // Use kartSpeed
-        const outwardVelocity = right.clone().multiplyScalar(sideSign * (Math.random() * 2 + 1)); // Sideways spread
-        const upwardVelocity = new THREE.Vector3(0, Math.random() * 2 + 1, 0); // Upward spread
+            const velocity = baseVelocity.add(outwardVelocity).add(upwardVelocity);
 
-        const velocity = baseVelocity.add(outwardVelocity).add(upwardVelocity);
-
-        this.driftSparks.push({
-            position: position,
-            velocity: velocity,
-            lifetime: this.sparkLifetime,
-            color: color
-        });
+            this.driftSparks.push({
+                position: position,
+                velocity: velocity,
+                lifetime: this.sparkLifetime,
+                color: color
+            });
+        }
     }
 
     updateDriftSparks(deltaTime) {
@@ -1103,7 +1137,50 @@ class Game {
                         if (this.currentLap > this.maxLaps) {
                             this.raceFinished = true;
                             console.log('%cRace Complete!', 'background: #FFC107; color: black; padding: 4px; border-radius: 4px;');
-                            alert('Race Complete!');
+                            
+                            // Create and show custom race completion modal
+                            const finalPosition = this.getOrdinalSuffix(this.playerPosition);
+                            const modal = document.createElement('div');
+                            modal.style.position = 'fixed';
+                            modal.style.top = '50%';
+                            modal.style.left = '50%';
+                            modal.style.transform = 'translate(-50%, -50%)';
+                            modal.style.background = 'rgba(0, 0, 0, 0.85)';
+                            modal.style.padding = '20px';
+                            modal.style.borderRadius = '10px';
+                            modal.style.color = 'white';
+                            modal.style.textAlign = 'center';
+                            modal.style.zIndex = '1000';
+                            modal.style.minWidth = '250px';
+                            
+                            const header = document.createElement('h2');
+                            header.innerText = 'Race Complete!';
+                            header.style.color = '#FFC107';
+                            header.style.marginBottom = '15px';
+                            
+                            const result = document.createElement('p');
+                            result.innerText = `You finished in ${finalPosition} place!`;
+                            result.style.fontSize = '1.2em';
+                            result.style.marginBottom = '20px';
+                            
+                            const retryButton = document.createElement('button');
+                            retryButton.innerText = 'Race Again';
+                            retryButton.style.padding = '10px 20px';
+                            retryButton.style.background = '#4CAF50';
+                            retryButton.style.color = 'white';
+                            retryButton.style.border = 'none';
+                            retryButton.style.borderRadius = '5px';
+                            retryButton.style.cursor = 'pointer';
+                            retryButton.style.fontSize = '1.1em';
+                            retryButton.onclick = () => {
+                                // Reload the page to restart the game
+                                window.location.reload();
+                            };
+                            
+                            modal.appendChild(header);
+                            modal.appendChild(result);
+                            modal.appendChild(retryButton);
+                            document.body.appendChild(modal);
                         }
                     }
 
@@ -1316,8 +1393,8 @@ class Game {
 
         // 2. Sort racers based on lap, then checkpoint (handling wrap-around), then distance
         racers.sort((a, b) => {
-            const logComparison = this.frameCount % 60 === 0; // Check if we should log this frame
-            if (logComparison) console.log(`%cComparing ${a.id} vs ${b.id}`, 'color: lightblue');
+            const logComparison = this.frameCount % 1 === 0; // Check if we should log this frame
+            //if (logComparison) console.log(`%cComparing ${a.id} vs ${b.id}`, 'color: lightblue');
             // 1. Sort by lap descending
             if (a.lap !== b.lap) {
                 if (logComparison) console.log(`  Lap diff: ${a.lap} vs ${b.lap} -> ${b.lap - a.lap > 0 ? 'B ahead' : 'A ahead'}`);
@@ -1325,34 +1402,34 @@ class Game {
             }
 
             // 2. Laps are the same, sort by checkpoint index, handling wrap-around
-            if (logComparison) console.log(`  Laps same (${a.lap}). Comparing checkpoints: ${a.checkpointIndex} vs ${b.checkpointIndex}`);
+            //if (logComparison) console.log(`  Laps same (${a.lap}). Comparing checkpoints: ${a.checkpointIndex} vs ${b.checkpointIndex}`);
             const idxA = a.checkpointIndex;
             const idxB = b.checkpointIndex;
 
             // Special case: If one is at finish (3) and other is not, the non-finish is ahead *within the same lap*
             // This means the racer who has crossed 0, 1, or 2 is ahead of the racer still at 3 from the previous lap completion.
             if (idxA === 3 && idxB !== 3) {
-                if (logComparison) console.log(`  Wrap-around: A is at finish (3), B is not (${idxB}) -> B ahead`);
+                //if (logComparison) console.log(`  Wrap-around: A is at finish (3), B is not (${idxB}) -> B ahead`);
                 return 1; // B is ahead (lower index but effectively further along this lap)
             }
             if (idxB === 3 && idxA !== 3) {
-                if (logComparison) console.log(`  Wrap-around: B is at finish (3), A is not (${idxA}) -> A ahead`);
+                //if (logComparison) console.log(`  Wrap-around: B is at finish (3), A is not (${idxA}) -> A ahead`);
                 return -1; // A is ahead
             }
 
             // Normal case (neither is 3, or both are 3): Higher checkpoint index is ahead
             if (idxA !== idxB) {
-                 if (logComparison) console.log(`  Checkpoint diff: ${idxA} vs ${idxB} -> ${idxB - idxA > 0 ? 'B ahead' : 'A ahead'}`);
+                 //if (logComparison) console.log(`  Checkpoint diff: ${idxA} vs ${idxB} -> ${idxB - idxA > 0 ? 'B ahead' : 'A ahead'}`);
                 return idxB - idxA;
             }
 
             // 3. Checkpoints are also the same, sort by distance ascending (closer is better)
-            if (logComparison) console.log(`  Checkpoints same (${idxA}). Comparing distance: ${a.distanceToNext.toFixed(2)} vs ${b.distanceToNext.toFixed(2)} -> ${a.distanceToNext - b.distanceToNext < 0 ? 'A ahead (closer)' : 'B ahead (closer)'}`);
+            //if (logComparison) console.log(`  Checkpoints same (${idxA}). Comparing distance: ${a.distanceToNext.toFixed(2)} vs ${b.distanceToNext.toFixed(2)} -> ${a.distanceToNext - b.distanceToNext < 0 ? 'A ahead (closer)' : 'B ahead (closer)'}`);
             return a.distanceToNext - b.distanceToNext;
         });
 
         // Log the final sorted order (throttled)
-        if (this.frameCount % 60 === 0) {
+        if (this.frameCount % 1 === 0) {
             console.log('%cSorted Racers (Frame ' + this.frameCount + '):', 'font-weight: bold; color: lightgreen;');
             console.table(racers.map(r => ({ id: r.id, lap: r.lap, checkpoint: r.checkpointIndex, distNext: r.distanceToNext.toFixed(2) })));
         }
@@ -1501,6 +1578,9 @@ class Game {
 
             const currentCheckpoint = this.checkpoints[currentCheckpointIndex];
             if (!this.racingLinePoints || this.racingLinePoints.length < 2) return; // Need path points
+
+            // Store previous position for checkpoint crossing detection
+            const prevPosition = bot.prevPosition || bot.mesh.position.clone();
 
             // --- Path Following Logic ---
 
@@ -1712,26 +1792,73 @@ class Game {
             }
 
 
-            // --- Checkpoint Advancement ---
-            // Calculate distance to the target checkpoint's center (XZ plane)
-            const targetCheckpoint = this.checkpoints[targetCheckpointIndex];
-            const dx = bot.mesh.position.x - targetCheckpoint.position.x;
-            const dz = bot.mesh.position.z - targetCheckpoint.position.z;
-            const currentDistanceToTargetCenter = Math.sqrt(dx * dx + dz * dz);
-
-            // Check distance to the *actual* checkpoint center
-            if (currentDistanceToTargetCenter < arrivalThreshold) {
-                const crossedCheckpointIndex = targetCheckpointIndex; // Store the index it just crossed
-                bot.currentCheckpointIndex = crossedCheckpointIndex;
-                bot.targetCheckpointIndex = nextTargetCheckpointIndex;
-
-                // Check for lap completion (crossing the new start/finish line, index 3)
-                if (crossedCheckpointIndex === 3) {
-                    bot.lap++;
-                    // console.log(`Bot ${this.bots.indexOf(bot)} completed lap, now on lap ${bot.lap}`);
+            // --- Check Checkpoint Crossings - IMPROVED DETECTION ---
+            // Check all checkpoints, similar to how we do for the player
+            for (let i = 0; i < this.checkpoints.length; i++) {
+                const checkpoint = this.checkpoints[i];
+                
+                // Get checkpoint information - same as in player checkpoint detection
+                const checkpointCenter = new THREE.Vector3(
+                    (checkpoint.posts[0].position.x + checkpoint.posts[1].position.x) / 2,
+                    (checkpoint.posts[0].position.y + checkpoint.posts[1].position.y) / 2,
+                    (checkpoint.posts[0].position.z + checkpoint.posts[1].position.z) / 2
+                );
+                const checkpointNormal = checkpoint.normal;
+                const checkpointWidth = checkpoint.posts[0].position.distanceTo(checkpoint.posts[1].position);
+                
+                // Use vector crossing detection similar to player's checkpoint detection
+                const vecToPrevPos = new THREE.Vector3(
+                    prevPosition.x - checkpointCenter.x,
+                    0,
+                    prevPosition.z - checkpointCenter.z
+                );
+                const vecToCurrPos = new THREE.Vector3(
+                    bot.mesh.position.x - checkpointCenter.x,
+                    0,
+                    bot.mesh.position.z - checkpointCenter.z
+                );
+                
+                // Check if bot crossed the plane
+                const prevDot = vecToPrevPos.dot(checkpointNormal);
+                const currDot = vecToCurrPos.dot(checkpointNormal);
+                
+                // If sign changed, the bot crossed the checkpoint plane
+                if (Math.sign(prevDot) !== Math.sign(currDot) && prevDot !== 0 && currDot !== 0) {
+                    // Calculate the intersection point on the plane
+                    const t = prevDot / (prevDot - currDot); // Interpolation factor
+                    const intersectionPoint = new THREE.Vector3().lerpVectors(prevPosition, bot.mesh.position, t);
+                    
+                    // Vector from checkpoint center to intersection point
+                    const vecCenterToIntersection = new THREE.Vector3().subVectors(intersectionPoint, checkpointCenter);
+                    
+                    // Get vector perpendicular to normal for gate width
+                    const checkpointDirection = new THREE.Vector3(checkpointNormal.z, 0, -checkpointNormal.x).normalize();
+                    
+                    // Calculate distance along gate
+                    const distanceAlongGate = vecCenterToIntersection.dot(checkpointDirection);
+                    
+                    // Check if intersection is within gate width
+                    if (Math.abs(distanceAlongGate) < checkpointWidth / 2) {
+                        // Check if this is the expected next checkpoint
+                        if (i === bot.targetCheckpointIndex) {
+                            // Remember current checkpoint index and update target
+                            bot.currentCheckpointIndex = i;
+                            bot.targetCheckpointIndex = (i + 1) % this.totalCheckpoints;
+                            
+                            // Check for lap completion
+                            if (i === 3) { // Index 3 is the start/finish line
+                                bot.lap++;
+                                console.log(`Bot ${botIndex} completed lap ${bot.lap}`);
+                            }
+                            
+                            break; // Stop checking other checkpoints after a valid crossing
+                        }
+                    }
                 }
-                // console.log(`Bot reached checkpoint ${bot.currentCheckpointIndex + 1}, next target: ${bot.targetCheckpointIndex + 1}`);
             }
+
+            // Store current position for next frame's checkpoint detection
+            bot.prevPosition = bot.mesh.position.clone();
 
             // --- Basic Bot Item AI ---
             if (bot.item && Math.random() < botUseItemChance) {
