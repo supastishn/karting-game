@@ -1918,10 +1918,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const speedometer = document.getElementById('speedometer');
     const raceInfo = document.querySelector('.race-info'); // Get the container
     const mobileControls = document.getElementById('mobile-controls');
+    const driftButton = document.getElementById('drift-button'); // Get drift button
     const difficultyButtons = document.querySelectorAll('.difficulty-button');
 
     // Ensure race info is hidden initially if JS runs before CSS potentially
     if (raceInfo) raceInfo.classList.add('hidden');
+    if (driftButton) driftButton.classList.add('hidden'); // Hide drift button initially
 
 
     difficultyButtons.forEach(button => {
@@ -1943,6 +1945,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const countdownDisplay = document.getElementById('countdown-display');
             if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Ensure hidden at first
             mobileControls.classList.remove('hidden');
+            if (driftButton) driftButton.classList.remove('hidden'); // Show drift button
 
 
             // Start the game (which now triggers the countdown)

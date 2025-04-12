@@ -73,6 +73,10 @@ body {
     align-items: flex-end; /* Align items to the bottom */
     padding: 0 20px;
     pointer-events: none;
+    /* Make sure drift button shows up when mobile controls are shown */
+    &.hidden + #drift-button { 
+        display: none !important;
+    }
 }
 
 #mobile-controls > div {
@@ -122,23 +126,32 @@ body {
 }
 
 
-#forward-button { grid-area: up; }
-#backward-button { grid-area: down; }
-#left-button { grid-area: left; }
-#right-button { grid-area: right; }
+#forward-button { /* grid-area: up; */ } /* Removed grid-area */
+#backward-button { /* grid-area: down; */ } /* Removed grid-area */
+#left-button { /* grid-area: left; */ } /* Removed grid-area */
+#right-button { /* grid-area: right; */ } /* Removed grid-area */
 
 #drift-button {
-    background: rgba(255, 255, 255, 0.3);
+    position: fixed; /* Position independently */
+    top: 150px; /* Below item display (80px top + 60px height + 10px gap) */
+    right: 20px; /* Align with speedometer/item display */
+    background: rgba(255, 255, 100, 0.5); /* Slightly different yellow */
     font-size: 32px;
-    color: yellow;
+    color: white; /* Changed from yellow for better contrast */
+    pointer-events: auto; /* Ensure it's clickable */
+    /* Inherits size, border-radius, display, align, justify, user-select from .control-button */
+}
+
+#drift-button.hidden {
+    display: none !important;
 }
 
 /* Removed .spark-indicator styles */
 
 .lap-counter {
-    position: fixed;
-    top: 20px;
-    left: 20px;
+    /* position: fixed; */ /* Removed */
+    /* top: 20px; */ /* Removed */
+    /* left: 20px; */ /* Removed */
     background-color: rgba(0, 0, 0, 0.8);
     color: #ffffff;
     padding: 15px 25px;
@@ -147,10 +160,9 @@ body {
     font-size: 24px;
     font-weight: bold;
     text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    /* z-index: 1000; */ /* Removed */
     transition: transform 0.3s ease, background-color 0.3s ease;
-    /* margin-right: 10px; */ /* Removed horizontal space */
-    margin-bottom: 10px; /* Add some space below the lap counter */
+    margin-bottom: 10px; /* Keep space below the lap counter */
 }
 
 .position-display {
@@ -162,7 +174,7 @@ body {
     font-size: 24px;
     font-weight: bold;
     text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    /* z-index: 1000; */ /* No z-index needed here as it's part of race-info */
 }
 
 .race-info {
@@ -172,7 +184,7 @@ body {
     display: flex;
     flex-direction: column; /* Stack items vertically */
     align-items: flex-start; /* Align items to the left */
-    z-index: 1000;
+    z-index: 1000; /* Keep z-index on the container */
 }
 
 
@@ -182,12 +194,12 @@ body {
 }
 
 /* Remove individual positioning from lap-counter as it's now in race-info */
-.lap-counter {
-    /* position: fixed; */ /* Removed */
-    /* top: 20px; */ /* Removed */
-    /* left: 20px; */ /* Removed */
-    /* z-index: 1000; */ /* Removed */
-}
+/* .lap-counter { */ /* Removed redundant rule */
+    /* position: fixed; */ 
+    /* top: 20px; */ 
+    /* left: 20px; */ 
+    /* z-index: 1000; */ 
+/* } */
 
 
 .hidden {
