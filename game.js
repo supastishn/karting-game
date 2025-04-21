@@ -1,7 +1,23 @@
+// Simple Mulberry32 PRNG
+function mulberry32(a) {
+    return function() {
+      var t = a += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+}
+
 class Game {
     constructor(difficulty = 'easy') { // Accept difficulty
         this.difficulty = difficulty; // Store difficulty
         console.log(`Starting game with difficulty: ${this.difficulty}`);
+
+        // --- PRNG Setup ---
+        const baseSeed = Date.now();
+        this.playerRandom = mulberry32(baseSeed); // PRNG for player and general game events
+        this.botRandomGenerators = []; // Will store PRNGs for each bot
+        // --- End PRNG Setup ---
 
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -357,7 +373,15 @@ class Game {
         );
         const startRotation = startParams.rotation + Math.PI; // Add 180 degrees rotation
 
+        const baseSeed = Date.now(); // Get base seed again, or pass from constructor if needed consistency across restarts
+
         for (let i = 0; i < numberOfBots; i++) {
+            // --- Create Bot PRNG ---
+            const botSeed = baseSeed + i + 1;
+            const botRandom = mulberry32(botSeed);
+            this.botRandomGenerators[i] = botRandom; // Store the generator
+            // --- End Bot PRNG ---
+            
             const botMaterial = new THREE.MeshBasicMaterial({ color: botColors[i % botColors.length] });
             const botMesh = new THREE.Mesh(botGeometry, botMaterial);
 
@@ -371,32 +395,36 @@ class Game {
 
             this.scene.add(botMesh);
 
-            // Assign unique stats to each bot based on difficulty
+            // Assign unique stats to each bot based on difficulty using bot's PRNG
             let botStats = {};
+            const randomFactor1 = botRandom(); // Use bot's PRNG
+            const randomFactor2 = botRandom(); // Use bot's PRNG
+            const randomFactor3 = botRandom(); // Use bot's PRNG
+            const randomFactor4 = botRandom(); // Use bot's PRNG
             switch (this.difficulty) {
                 case 'medium':
                     botStats = {
-                        maxSpeed: this.maxSpeed * (0.80 + Math.random() * 0.2), // 80-100%
-                        acceleration: this.acceleration * (1.0 + Math.random() * 0.4), // 1.0x - 1.4x
-                        turnRate: this.turnSpeed * (1.8 + Math.random() * 1.4), // 1.8x - 3.2x (Increased variation)
-                        targetOffset: (Math.random() - 0.5) * 14 // +/- 7.0 (Increased range)
+                        maxSpeed: this.maxSpeed * (0.80 + randomFactor1 * 0.2), // 80-100%
+                        acceleration: this.acceleration * (1.0 + randomFactor2 * 0.4), // 1.0x - 1.4x
+                        turnRate: this.turnSpeed * (1.8 + randomFactor3 * 1.4), // 1.8x - 3.2x (Increased variation)
+                        targetOffset: (randomFactor4 - 0.5) * 14 // +/- 7.0 (Increased range)
                     };
                     break;
                 case 'hard':
                     botStats = {
-                        maxSpeed: this.maxSpeed * (0.90 + Math.random() * 0.2), // 90-110%
-                        acceleration: this.acceleration * (1.1 + Math.random() * 0.4), // 1.1x - 1.5x
-                        turnRate: this.turnSpeed * (2.2 + Math.random() * 1.6), // 2.2x - 3.8x (Increased variation)
-                        targetOffset: (Math.random() - 0.5) * 10 // +/- 5.0 (Increased range)
+                        maxSpeed: this.maxSpeed * (0.90 + randomFactor1 * 0.2), // 90-110%
+                        acceleration: this.acceleration * (1.1 + randomFactor2 * 0.4), // 1.1x - 1.5x
+                        turnRate: this.turnSpeed * (2.2 + randomFactor3 * 1.6), // 2.2x - 3.8x (Increased variation)
+                        targetOffset: (randomFactor4 - 0.5) * 10 // +/- 5.0 (Increased range)
                     };
                     break;
                 case 'easy':
                 default: // Default to easy
                     botStats = {
-                        maxSpeed: this.maxSpeed * (0.65 + Math.random() * 0.2), // 65-85%
-                        acceleration: this.acceleration * (0.8 + Math.random() * 0.4),
-                        turnRate: this.turnSpeed * (1.2 + Math.random() * 1.6), // 1.2x - 2.8x (Increased variation)
-                        targetOffset: (Math.random() - 0.5) * 22 // +/- 11.0 (Increased range)
+                        maxSpeed: this.maxSpeed * (0.65 + randomFactor1 * 0.2), // 65-85%
+                        acceleration: this.acceleration * (0.8 + randomFactor2 * 0.4),
+                        turnRate: this.turnSpeed * (1.2 + randomFactor3 * 1.6), // 1.2x - 2.8x (Increased variation)
+                        targetOffset: (randomFactor4 - 0.5) * 22 // +/- 11.0 (Increased range)
                     };
                     break;
             }
@@ -409,6 +437,7 @@ class Game {
                 targetCheckpointIndex: 0, // Target the new checkpoint 1 (index 0)
                 currentCheckpointIndex: 3, // Start at the new start/finish line (index 3)
                 stats: botStats, // Store the unique stats
+                random: botRandom, // Store the bot's specific PRNG function
                 // Drift/Boost state for bots
                 isDrifting: false,
                 driftTime: 0,
@@ -417,8 +446,8 @@ class Game {
                 boostTime: 0,
                 // Dynamic path variation
                 dynamicTargetOffset: 0, // Current dynamic offset value
-                dynamicOffsetTimer: Math.random() * 0.5, // Timer to control how often dynamic offset changes (random start 0-0.5s)
-                dynamicOffsetUpdateTime: 0.2 + Math.random() * 0.4, // How often to change offset (0.2-0.6s) - More frequent updates
+                dynamicOffsetTimer: botRandom() * 0.5, // Timer to control how often dynamic offset changes (random start 0-0.5s) - USE PRNG
+                dynamicOffsetUpdateTime: 0.2 + botRandom() * 0.4, // How often to change offset (0.2-0.6s) - More frequent updates - USE PRNG
                 lastSparkEmitTime: 0, // Initialize spark timer for bots
                 impulse: new THREE.Vector3(0, 0, 0), // Impulse vector for bumps
                 impulseDecay: 0.85, // Same decay as player for consistency
