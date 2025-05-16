@@ -189,12 +189,37 @@ class Game {
         this.updateScoreboard();
         this.updateItemDisplay(); // Initial update for item display
 
-        this.setupScene();
-        this.createBots(3);
-        this.createItemBoxes(); // Create item boxes
-        this.setupControls();
-        // Don't start animate immediately, start countdown first
-        this.startCountdown();
+        // Defer some setup until OBJ model is loaded in setupScene
+        this.setupSceneAndStart();
+    }
+
+    async setupSceneAndStart() {
+        try {
+            await this.setupScene(); // setupScene will now handle kart loading
+            
+            // These must run after this.kart is loaded and scene is partially set up
+            this.createBots(3); 
+            // Store original scale for player kart after it's loaded and potentially scaled
+            if (this.kart) {
+                this.kart.getWorldScale(this.originalPlayerScale);
+            }
+            // Store original scale for bots (already done in createBots if their geometry is simple)
+            this.bots.forEach(bot => {
+                if (bot.mesh.isMesh) { // Simple box bots
+                     bot.mesh.getWorldScale(bot.originalScale);
+                } else { // If bots were also complex models
+                    bot.mesh.getWorldScale(bot.originalScale);
+                }
+            });
+
+
+            this.createItemBoxes();
+            this.setupControls();
+            this.startCountdown();
+        } catch (error) {
+            console.error("Error during scene setup and start:", error);
+            // Handle error, maybe show a message to the user
+        }
     }
     
     // Helper function to check if an element is part of Eruda
@@ -218,50 +243,122 @@ class Game {
     }
 
     setupScene() {
-        // Create larger ground
-        const groundGeometry = new THREE.PlaneGeometry(400, 400);
-        const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00, side: THREE.DoubleSide });
-        this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        this.ground.rotation.x = Math.PI / 2;
-        this.scene.add(this.ground);
+        return new Promise((resolve, reject) => {
+            // Create larger ground
+            const groundGeometry = new THREE.PlaneGeometry(400, 400);
+            const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00, side: THREE.DoubleSide });
+            this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            this.ground.rotation.x = Math.PI / 2;
+            this.scene.add(this.ground);
 
-        // Create race track (which now also creates walls)
-        this.createRaceTrack();
+            // Create race track (which now also creates walls and checkpoints)
+            this.createRaceTrack(); // This also calls createCheckpoints internally
 
-        // Create kart (simple box) in purple
-        const kartGeometry = new THREE.BoxGeometry(1, 0.5, 2);
-        const kartMaterial = new THREE.MeshBasicMaterial({ color: 0x800080 });
-        this.kart = new THREE.Mesh(kartGeometry, kartMaterial);
-        this.scene.add(this.kart);
+            // Load player kart model
+            const loader = new THREE.OBJLoader();
+            loader.load(
+                '/Shaded/base.obj', // Path to your OBJ file
+                (object) => {
+                    this.kart = object;
 
-        // Define start parameters based on the *new* first checkpoint (index 0)
-        const newStartCheckpoint = this.checkpoints[0]; // Get the data for the new checkpoint 1
-        const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
-        const startOffsetDistance = 3.0; // How far *after* the line to start
+                    // --- Apply transformations and material to the loaded kart ---
+                    // These values are guesses and likely need adjustment.
+                    const desiredHeight = 0.5; // Target height for the kart
+                    const boundingBox = new THREE.Box3().setFromObject(this.kart);
+                    const currentSize = new THREE.Vector3();
+                    boundingBox.getSize(currentSize);
+                    
+                    let scaleFactor = 1;
+                    if (currentSize.y > 0.001) { // Avoid division by zero or tiny values
+                        scaleFactor = desiredHeight / currentSize.y;
+                    } else if (currentSize.x > 0.001) {
+                        scaleFactor = 1.0 / currentSize.x; // Fallback if height is zero
+                    } else {
+                        scaleFactor = 0.1; // Default small scale if size is weird
+                    }
 
-        // Calculate the direction vector *along* the starting rotation
-        const forwardVector = new THREE.Vector3(
-            Math.sin(startParams.rotation),
-            0,
-            Math.cos(startParams.rotation)
-        );
+                    this.kart.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                    
+                    // Adjust rotation if necessary - OBJ might be Z-up or X-forward
+                    // Assuming model is Z-forward like the original box. If it's Y-up, it might need:
+                    // this.kart.rotation.x = -Math.PI / 2;
+                    // If model is X-forward, it might need:
+                    // this.kart.rotation.y = -Math.PI / 2; 
+                    
+                    // Apply a new material to all meshes in the loaded OBJ
+                    const kartMaterial = new THREE.MeshStandardMaterial({
+                        color: 0x800080, // Purple, similar to original
+                        roughness: 0.6,
+                        metalness: 0.3
+                    });
+                    this.kart.traverse((child) => {
+                        if (child.isMesh) {
+                            child.material = kartMaterial;
+                            child.castShadow = true; // Optional: if you add shadows later
+                            child.receiveShadow = true; // Optional
+                        }
+                    });
 
-        // Calculate the final starting position (just after the checkpoint)
-        const finalStartPosition = new THREE.Vector3(
-            startParams.x + forwardVector.x * startOffsetDistance,
-            0.25, // Kart height
-            startParams.z + forwardVector.z * startOffsetDistance
-        );
+                    this.scene.add(this.kart);
+                    // --- End Kart Model Setup ---
 
-        // Position kart slightly after the checkpoint
-        this.kart.position.copy(finalStartPosition);
-        // Rotate kart 180 degrees from checkpoint rotation
-        this.kart.rotation.y = startParams.rotation + Math.PI;
+                    // Define start parameters based on the first checkpoint
+                    const newStartCheckpoint = this.checkpoints[0];
+                    const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
+                    const startOffsetDistance = 3.0;
 
-        // Position camera initially behind the kart
-        this.updateCamera(); // Call updateCamera once to set initial position based on kart
-        this.camera.position.copy(this.cameraTargetPosition); // Set camera position directly without lerp for the first frame
-        this.camera.lookAt(this.kart.position);
+                    const forwardVector = new THREE.Vector3(Math.sin(startParams.rotation), 0, Math.cos(startParams.rotation));
+                    const finalStartPosition = new THREE.Vector3(
+                        startParams.x + forwardVector.x * startOffsetDistance,
+                        0.25, // Initial height, model pivot might affect this
+                        startParams.z + forwardVector.z * startOffsetDistance
+                    );
+
+                    this.kart.position.copy(finalStartPosition);
+                     // Adjust position based on the model's actual bounding box bottom
+                    const newBoundingBox = new THREE.Box3().setFromObject(this.kart);
+                    this.kart.position.y -= newBoundingBox.min.y; // Align bottom of kart with track (0) + 0.25 clearance
+
+
+                    this.kart.rotation.y = startParams.rotation + Math.PI; // Face away from checkpoint
+
+                    // Position camera initially
+                    this.updateCamera();
+                    this.camera.position.copy(this.cameraTargetPosition);
+                    this.camera.lookAt(this.kart.position);
+                    
+                    console.log("Player kart model loaded and positioned.");
+                    resolve(); // Resolve the promise once model is loaded and scene setup
+                },
+                undefined, // onProgress callback (optional)
+                (error) => {
+                    console.error('An error happened while loading the OBJ model:', error);
+                    // Fallback: create the old box kart so the game can still run
+                    const kartGeometry = new THREE.BoxGeometry(1, 0.5, 2);
+                    const kartMaterial = new THREE.MeshBasicMaterial({ color: 0x800080 });
+                    this.kart = new THREE.Mesh(kartGeometry, kartMaterial);
+                    this.scene.add(this.kart);
+                    
+                    // Position fallback kart
+                    const newStartCheckpoint = this.checkpoints[0];
+                    const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
+                    const startOffsetDistance = 3.0;
+                    const forwardVector = new THREE.Vector3(Math.sin(startParams.rotation),0,Math.cos(startParams.rotation));
+                    const finalStartPosition = new THREE.Vector3(startParams.x + forwardVector.x * startOffsetDistance, 0.25, startParams.z + forwardVector.z * startOffsetDistance);
+                    this.kart.position.copy(finalStartPosition);
+                    this.kart.rotation.y = startParams.rotation + Math.PI;
+                    
+                    this.updateCamera();
+                    this.camera.position.copy(this.cameraTargetPosition);
+                    this.camera.lookAt(this.kart.position);
+
+                    console.warn("Fell back to default box kart.");
+                    // Still resolve, but with fallback
+                    // Or reject if critical: reject(error);
+                    resolve(); 
+                }
+            );
+        });
     }
 
     setupSparkParticles() {
@@ -902,8 +999,14 @@ class Game {
             this.playerInvisibilityDuration -= deltaTime;
             if (this.playerInvisibilityDuration <= 0) {
                 this.playerIsInvisible = false;
-                this.kart.material.opacity = 1.0;
-                // this.kart.material.transparent might need to be false if no other transparency effects
+                this.kart.traverse(child => {
+                    if (child.isMesh) {
+                        child.material.opacity = 1.0;
+                        // If original material wasn't transparent, set transparent = false
+                        // For simplicity, assuming the kart material instance handles this
+                        // or that it was made transparent when Boo started.
+                    }
+                });
             }
         }
         if (this.playerShrinkDuration > 0) {
@@ -1950,8 +2053,12 @@ class Game {
         if (isPlayer) {
             this.playerIsInvisible = true;
             this.playerInvisibilityDuration = this.booDuration;
-            this.kart.material.opacity = 0.4; // Make semi-transparent
-            this.kart.material.transparent = true;
+            this.kart.traverse(child => {
+                if (child.isMesh) {
+                    child.material.transparent = true; // Ensure material is transparent
+                    child.material.opacity = 0.4;
+                }
+            });
         } else {
             racer.isInvisible = true;
             racer.invisibilityDuration = this.booDuration;
