@@ -749,7 +749,8 @@ class Game {
         // Orient the wall segment
         // The length of the BoxGeometry is along its local X-axis.
         // We want to rotate it in the XZ plane (around Y) to align with the segment from p1 to p2.
-        wallMesh.rotation.y = Math.atan2(diff.x, diff.z);
+        // Then add an additional 90 degrees (PI/2) rotation.
+        wallMesh.rotation.y = Math.atan2(diff.x, diff.z) + Math.PI / 2;
     
         return wallMesh;
     }
