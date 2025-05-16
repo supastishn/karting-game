@@ -1009,14 +1009,20 @@ class Game {
             }
             // Use item with 'e' key
             if (e.key.toLowerCase() === 'e' && !wasPressed) {
+                console.log("[TRAIL DEBUG] 'e' key pressed. Player item:", this.playerItem, "Is trailing:", this.playerIsTrailingItem);
                 this.isItemButtonPressed = true;
                 if (this.playerItem && !this.playerIsTrailingItem && this.isTrailableItem(this.playerItem)) {
+                    console.log("[TRAIL DEBUG] 'e' key: Setting itemHoldTimeout for trailable item:", this.playerItem);
                     this.itemHoldTimeout = setTimeout(() => {
                         if (this.isItemButtonPressed && this.playerItem) { // Check again in case item used or button released
+                            console.log("[TRAIL DEBUG] 'e' key: itemHoldTimeout fired. Calling startTrailingItem for:", this.playerItem);
                             this.startTrailingItem();
+                        } else {
+                            console.log("[TRAIL DEBUG] 'e' key: itemHoldTimeout fired, but conditions not met. ButtonPressed:", this.isItemButtonPressed, "PlayerItem:", this.playerItem);
                         }
                     }, this.ITEM_HOLD_THRESHOLD);
-                } else if (this.playerItem) { // Not trailable, or already trailing but button pressed again (should not happen if logic is tight)
+                } else if (this.playerItem) { 
+                    console.log("[TRAIL DEBUG] 'e' key: Item is not trailable or already trailing. PlayerItem:", this.playerItem, "IsTrailing:", this.playerIsTrailingItem);
                     // For non-trailable items, or if trying to use while already trailing (which startTrailingItem should prevent)
                     // This path is more for immediate use of non-trailable items if logic were to allow 'e' for them.
                     // Current useItem button handles only trailable items effectively via the timeout for hold.
@@ -1035,12 +1041,17 @@ class Game {
                 this.touchControls.drift = false;
             }
             if (e.key.toLowerCase() === 'e') {
+                console.log("[TRAIL DEBUG] 'e' key released.");
                 clearTimeout(this.itemHoldTimeout);
                 if (this.isItemButtonPressed) {
                     if (this.playerIsTrailingItem) {
+                        console.log("[TRAIL DEBUG] 'e' key release: Deploying trailed item:", this.playerTrailedItemType);
                         this.deployTrailedItem();
                     } else if (this.playerItem) { // Tap completed for an item that wasn't trailed
+                        console.log("[TRAIL DEBUG] 'e' key release: Tap - Using item:", this.playerItem);
                         this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
+                    } else {
+                        console.log("[TRAIL DEBUG] 'e' key release: No item to use or trail.");
                     }
                 }
                 this.isItemButtonPressed = false;
@@ -1100,30 +1111,42 @@ class Game {
         const useItemElement = document.getElementById('use-item-button');
         if (useItemElement) {
             const onUseItemPress = () => {
+                console.log("[TRAIL DEBUG] UI Item Button pressed. Player item:", this.playerItem, "Is trailing:", this.playerIsTrailingItem);
                 this.isItemButtonPressed = true; // General button state
                 // this.buttonHoldThresholdMet = false; // No longer needed
                 if (this.playerItem && !this.playerIsTrailingItem && this.isTrailableItem(this.playerItem)) {
+                    console.log("[TRAIL DEBUG] UI Item Button: Setting itemHoldTimeout for trailable item:", this.playerItem);
                     // For UI button (touch/mouse), set timeout to actually start trailing
                     this.itemHoldTimeout = setTimeout(() => {
                         if (this.isItemButtonPressed && this.playerItem) { // Check button still pressed & item exists
+                            console.log("[TRAIL DEBUG] UI Item Button: itemHoldTimeout fired. Calling startTrailingItem for:", this.playerItem);
                             this.startTrailingItem(); // Start visual trail when hold threshold met
+                        } else {
+                            console.log("[TRAIL DEBUG] UI Item Button: itemHoldTimeout fired, but conditions not met. ButtonPressed:", this.isItemButtonPressed, "PlayerItem:", this.playerItem);
                         }
                     }, this.ITEM_HOLD_THRESHOLD);
+                } else if (this.playerItem) {
+                    console.log("[TRAIL DEBUG] UI Item Button: Item is not trailable or already trailing. PlayerItem:", this.playerItem, "IsTrailing:", this.playerIsTrailingItem);
                 }
                 useItemElement.style.background = 'rgba(100, 100, 255, 0.8)';
             };
 
             const onUseItemEnd = (e) => {
                 if (e) { e.preventDefault(); e.stopPropagation(); }
+                console.log("[TRAIL DEBUG] UI Item Button released.");
                 clearTimeout(this.itemHoldTimeout);
 
                 if (this.isItemButtonPressed) { 
                     if (this.playerIsTrailingItem) {
+                        console.log("[TRAIL DEBUG] UI Item Button release: Deploying trailed item:", this.playerTrailedItemType);
                         // If an item is visually trailing (due to 'e' key hold or UI button hold)
                         this.deployTrailedItem();
                     } else if (this.playerItem) {
+                        console.log("[TRAIL DEBUG] UI Item Button release: Tap - Using item:", this.playerItem);
                         // Not trailing, but an item is held: it was a tap or released before hold threshold.
                         this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
+                    } else {
+                        console.log("[TRAIL DEBUG] UI Item Button release: No item to use or trail.");
                     }
                 }
                 this.isItemButtonPressed = false;
@@ -2029,9 +2052,12 @@ class Game {
     }
 
     startTrailingItem() {
-        if (!this.playerItem || !this.isTrailableItem(this.playerItem) || this.playerIsTrailingItem) return;
+        if (!this.playerItem || !this.isTrailableItem(this.playerItem) || this.playerIsTrailingItem) {
+            console.log("[TRAIL DEBUG] startTrailingItem: Conditions not met. PlayerItem:", this.playerItem, "IsTrailable:", this.isTrailableItem(this.playerItem), "IsTrailing:", this.playerIsTrailingItem);
+            return;
+        }
 
-        // console.log(`Player starts trailing ${this.playerItem}`);
+        console.log(`[TRAIL DEBUG] Player starts trailing ${this.playerItem}`);
         this.playerIsTrailingItem = true;
         this.playerTrailedItemType = this.playerItem;
         this.playerItem = null; // Item is now "in use" being trailed.
@@ -2080,9 +2106,12 @@ class Game {
     }
 
     deployTrailedItem() {
-        if (!this.playerIsTrailingItem || !this.playerTrailedItemType) return;
+        if (!this.playerIsTrailingItem || !this.playerTrailedItemType) {
+            console.log("[TRAIL DEBUG] deployTrailedItem: Conditions not met. IsTrailing:", this.playerIsTrailingItem, "TrailedItemType:", this.playerTrailedItemType);
+            return;
+        }
 
-        // console.log(`Player deploys trailed ${this.playerTrailedItemType}`);
+        console.log(`[TRAIL DEBUG] Player deploys trailed ${this.playerTrailedItemType}`);
         if (this.playerTrailedItemMesh) {
             this.scene.remove(this.playerTrailedItemMesh);
             if (this.playerTrailedItemMesh.geometry) this.playerTrailedItemMesh.geometry.dispose();
@@ -2532,7 +2561,7 @@ class Game {
                  else if (this.playerTrailedItemType === 'banana') trailedItemRadius = 0.5;
 
                 if (shellPos.distanceTo(this.playerTrailedItemMesh.position) < (0.6 + trailedItemRadius)) {
-                    // console.log("Red shell hit player's trailed item:", this.playerTrailedItemType);
+                    console.log("[TRAIL DEBUG] Red shell hit player's trailed item:", this.playerTrailedItemType);
                     this.scene.remove(shell.mesh);
                     if(shell.mesh.geometry) shell.mesh.geometry.dispose();
                     this.activeRedShells.splice(i, 1);
@@ -3435,7 +3464,7 @@ class Game {
                 else if (this.playerTrailedItemType === 'banana') trailedItemRadius = 0.5;
 
                 if (shell.mesh.position.distanceTo(this.playerTrailedItemMesh.position) < (0.6 + trailedItemRadius)) {
-                    // console.log("Green shell hit player's trailed item:", this.playerTrailedItemType);
+                    console.log("[TRAIL DEBUG] Green shell hit player's trailed item:", this.playerTrailedItemType);
                     this.scene.remove(shell.mesh); 
                     if(shell.mesh.geometry) shell.mesh.geometry.dispose();
                     // shell.mesh.material.dispose(); // If not shared
