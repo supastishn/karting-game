@@ -2265,34 +2265,58 @@ class Game {
         }
 
         if (racersToTarget.length > 0) {
-            const victimData = racersToTarget[Math.floor(this.playerRandom() * racersToTarget.length)]; // Use playerRandom for Boo item stealing event
-            let stolenItem = null;
+            const selectedTargetData = racersToTarget[Math.floor(this.playerRandom() * racersToTarget.length)];
+            let stolenItemValue = null; // Temporary variable to hold the item string
+            let victimLogName = "Unknown";
 
-            if (victimData.itemHolder === 'player') {
-                stolenItem = this.playerItem;
-                this.playerItem = null;
-                this.updateItemDisplay(); // Victim player updates their display
-                 console.log(`Boo stole ${stolenItem} from Player!`);
-            } else { // Victim is a bot
-                stolenItem = victimData.racerObj.item;
-                victimData.racerObj.item = null;
-                 console.log(`Boo stole ${stolenItem} from Bot ${this.bots.indexOf(victimData.racerObj)}!`);
+            if (thief.mesh === this.kart) { // Player is the thief, selectedTargetData is a direct bot object
+                const victimBot = selectedTargetData;
+                // The filter `b.item !== null` should ensure victimBot.item is truthy if a target is found.
+                if (victimBot.item) { 
+                    stolenItemValue = victimBot.item;
+                    victimBot.item = null; // Remove item from victim bot
+                    itemWasStolen = true;
+                    victimLogName = `Bot ${this.bots.indexOf(victimBot)}`;
+                }
+            } else { // Bot is the thief, selectedTargetData is {racerObj: ..., itemHolder: ...}
+                const victimWrapper = selectedTargetData;
+                if (victimWrapper.itemHolder === 'player') {
+                    // The filter `this.playerItem !== null` should ensure this.playerItem is truthy.
+                    if (this.playerItem) { 
+                        stolenItemValue = this.playerItem;
+                        this.playerItem = null; // Remove item from player
+                        this.updateItemDisplay(); // Victim player updates their display
+                        itemWasStolen = true;
+                        victimLogName = "Player";
+                    }
+                } else { // Victim is another bot
+                    const victimBot = victimWrapper.racerObj;
+                    // The filter `b.item !== null` should ensure victimBot.item is truthy.
+                    if (victimBot.item) { 
+                        stolenItemValue = victimBot.item;
+                        victimBot.item = null; // Remove item from victim bot
+                        itemWasStolen = true;
+                        victimLogName = `Bot ${this.bots.indexOf(victimBot)}`;
+                    }
+                }
             }
             
-            if (stolenItem) {
-                itemWasStolen = true;
+            if (itemWasStolen) { // If a steal was successful
+                console.log(`Boo stole ${stolenItemValue} from ${victimLogName}!`);
                 // Give stolen item to thief
-                if (thief.mesh === this.kart) {
-                    this.playerItem = stolenItem;
-                    this.updateItemDisplay(); // Thief player updates their display
-                } else {
-                    thief.item = stolenItem;
+                if (thief.mesh === this.kart) { // Player is the thief
+                    this.playerItem = stolenItemValue;
+                    this.updateItemDisplay(); // Thief player updates their display with the new item
+                } else { // Bot is the thief
+                    thief.item = stolenItemValue;
                 }
             }
         }
         
         if (!itemWasStolen) {
-            console.log("Boo couldn't find an item to steal!");
+            // This message now correctly covers cases where no valid target was found,
+            // or (less likely due to filters) a target was selected but had no item.
+            console.log("Boo couldn't find an item to steal or the target had nothing!");
         }
         return itemWasStolen;
     }
