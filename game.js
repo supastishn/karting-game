@@ -146,7 +146,7 @@ class Game {
         this.bananaStunTime = 1.0;
         this.mushroomBoostMultiplier = 1.5;
         this.mushroomBoostTime = 2.0;
-        this.greenShellSpeed = 0.3;
+        // this.greenShellSpeed = 0.3; // Speed is now dynamic: this.maxSpeed * 1.5
         this.greenShellBounces = 3;
         this.greenShellLifetime = 7.0; // seconds
         this.greenShellStunTime = 1.0;
@@ -1596,20 +1596,85 @@ class Game {
     }
 
     giveItem(racer) {
-        // Check if racer is player or bot
         const isPlayer = (racer.mesh === this.kart);
         const randomFunction = isPlayer ? this.playerRandom : racer.random;
 
+        // Determine rank for item tiering
+        let rank;
+        const allRacersForRanking = [{ 
+            id: 'player', 
+            mesh: this.kart, 
+            lap: this.currentLap, 
+            checkpointIndex: this.lastCheckpoint === -1 ? 3 : this.lastCheckpoint, 
+            position: this.kart.position,
+            isPlayer: true 
+        }];
+
+        this.bots.forEach((bot, index) => {
+            allRacersForRanking.push({ 
+                id: `bot_${index}`, 
+                mesh: bot.mesh, 
+                lap: bot.lap, 
+                checkpointIndex: bot.currentCheckpointIndex, 
+                position: bot.mesh.position,
+                isPlayer: false,
+                botRef: bot
+            });
+        });
+
+        allRacersForRanking.sort((a, b) => {
+            if (a.lap !== b.lap) return b.lap - a.lap;
+            
+            const idxA = a.checkpointIndex;
+            const idxB = b.checkpointIndex;
+
+            if (idxA === 3 && idxB !== 3 && a.lap === b.lap) return 1; 
+            if (idxB === 3 && idxA !== 3 && a.lap === b.lap) return -1;
+            if (idxA !== idxB) return idxB - idxA;
+
+            const nextCheckpointIndexA = (a.checkpointIndex + 1) % this.totalCheckpoints;
+            const nextCheckpointIndexB = (b.checkpointIndex + 1) % this.totalCheckpoints;
+            const distA = this.calculateDistanceToNextCheckpoint(a.position, nextCheckpointIndexA);
+            const distB = this.calculateDistanceToNextCheckpoint(b.position, nextCheckpointIndexB);
+            return distA - distB;
+        });
+        
+        const racerUniqueId = isPlayer ? 'player' : `bot_${this.bots.indexOf(racer)}`;
+        rank = allRacersForRanking.findIndex(r => r.id === racerUniqueId) + 1;
+
+        const totalRacers = allRacersForRanking.length;
+        let availableItems;
+
+        if (rank === 1) {
+            availableItems = ['banana', 'greenShell'];
+            console.log(`${racerUniqueId} is 1st, gets Tier 1 items.`);
+        } else if (rank === totalRacers) { // Last place
+            availableItems = ['boo', 'lightningBolt', 'mushroom'];
+            console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 items.`);
+        } else if (rank > Math.ceil(totalRacers / 2)) { // Back half of the pack (but not last)
+            availableItems = ['mushroom', 'boo', 'fakeItemBox'];
+            console.log(`${racerUniqueId} is ${rank} (back half), gets Tier 3 items.`);
+        } else { // Front half of the pack (but not first)
+            availableItems = ['mushroom', 'fakeItemBox', 'greenShell'];
+            console.log(`${racerUniqueId} is ${rank} (front half), gets Tier 2 items.`);
+        }
+        
+        if (!availableItems || availableItems.length === 0) { // Fallback, should not happen
+            availableItems = ['mushroom']; 
+        }
+
+        const chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
+
         if (isPlayer) {
-            if (this.playerItem === null) { // Only give item if player doesn't have one
-                this.playerItem = this.itemTypes[Math.floor(randomFunction() * this.itemTypes.length)];
-                console.log(`Player got item: ${this.playerItem}`);
+            if (this.playerItem === null) {
+                this.playerItem = chosenItem;
+                console.log(`Player (Rank ${rank}) got item: ${this.playerItem}`);
                 this.updateItemDisplay();
             }
         } else { // It's a bot
              if (racer.item === null) {
-                 racer.item = this.itemTypes[Math.floor(randomFunction() * this.itemTypes.length)];
-                 console.log(`Bot ${this.bots.indexOf(racer)} got item: ${racer.item}`);
+                 racer.item = chosenItem;
+                 console.log(`Bot ${this.bots.indexOf(racer)} (Rank ${rank}) got item: ${racer.item}`);
              }
         }
     }
@@ -1723,9 +1788,11 @@ class Game {
         shellMesh.position.copy(spawnPosition);
         this.scene.add(shellMesh);
 
+        const shellSpeed = this.maxSpeed * 1.5; // Green shell speed is 1.5x player's maxSpeed
+
         this.activeGreenShells.push({
             mesh: shellMesh,
-            velocity: fireDirection.multiplyScalar(this.greenShellSpeed),
+            velocity: fireDirection.multiplyScalar(shellSpeed),
             owner: racer,
             bouncesLeft: this.greenShellBounces,
             lifetime: this.greenShellLifetime
