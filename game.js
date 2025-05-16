@@ -2236,12 +2236,25 @@ class Game {
                 }
             });
         }
-        // Item Stealing Logic (simple: steal from racer in front, or random if user is 1st)
-        this.stealItemWithBoo(racer);
+        // Item Stealing Logic
+        const itemStolen = this.stealItemWithBoo(racer);
+
+        if (itemStolen) {
+            // If an item was stolen, end the Boo effect immediately
+            if (isPlayer) {
+                this.playerInvisibilityDuration = 0; // Will be processed in updateKart
+            } else {
+                racer.invisibilityDuration = 0; // Will be processed in updateBots
+            }
+            console.log("Boo effect ended due to successful steal.");
+        }
+        // If itemStolen is false, the Boo effect continues for its normal duration.
     }
     
     stealItemWithBoo(thief) {
         let racersToTarget = [];
+        let itemWasStolen = false;
+
         if (thief.mesh === this.kart) { // Player is the thief
             racersToTarget = this.bots.filter(b => b.item !== null && !b.isInvisible);
         } else { // Bot is the thief
@@ -2252,8 +2265,6 @@ class Game {
         }
 
         if (racersToTarget.length > 0) {
-            // Prioritize stealing from someone ahead if possible, otherwise random
-            // This requires knowing ranks, for now, just random from available targets
             const victimData = racersToTarget[Math.floor(this.playerRandom() * racersToTarget.length)]; // Use playerRandom for Boo item stealing event
             let stolenItem = null;
 
@@ -2268,16 +2279,22 @@ class Game {
                  console.log(`Boo stole ${stolenItem} from Bot ${this.bots.indexOf(victimData.racerObj)}!`);
             }
             
-            // Give stolen item to thief
-            if (thief.mesh === this.kart) {
-                this.playerItem = stolenItem;
-                this.updateItemDisplay(); // Thief player updates their display
-            } else {
-                thief.item = stolenItem;
+            if (stolenItem) {
+                itemWasStolen = true;
+                // Give stolen item to thief
+                if (thief.mesh === this.kart) {
+                    this.playerItem = stolenItem;
+                    this.updateItemDisplay(); // Thief player updates their display
+                } else {
+                    thief.item = stolenItem;
+                }
             }
-        } else {
+        }
+        
+        if (!itemWasStolen) {
             console.log("Boo couldn't find an item to steal!");
         }
+        return itemWasStolen;
     }
 
 
