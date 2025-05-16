@@ -47,13 +47,18 @@ class Game {
             rearView: false // Added for rear view
         };
         this.speed = 0;
-        // Base speeds for 150cc
-        const baseMaxSpeed = 0.5;
-        const baseAcceleration = 0.0033;
-        const baseMaxSpeedKmh = 180;
+        // Base speeds for 150cc (these are the reference values)
+        const baseMaxSpeed = 0.5; // Max arbitrary speed for 150cc
+        const baseAcceleration = 0.0033; // Acceleration for 150cc
+        const baseMaxSpeedKmh = 180; // Max km/h for 150cc
 
-        this.maxSpeed = baseMaxSpeed * ccMultiplier;
-        this.acceleration = baseAcceleration * ccMultiplier;
+        // Universal conversion factor from arbitrary speed units to km/h, based on the 150cc standard.
+        // (e.g., 1 arbitrary speed unit effectively equals (180km/h / 0.5 arb_units) = 360 km/h)
+        this.universalKmhConversionFactor = baseMaxSpeedKmh / baseMaxSpeed;
+
+        // Kart's physics properties for the current CC
+        this.maxSpeed = baseMaxSpeed * ccMultiplier; // Max arbitrary speed for current CC
+        this.acceleration = baseAcceleration * ccMultiplier; // Acceleration for current CC
         this.deceleration = 0.005; // Deceleration might not need to scale, or scale differently
         this.turnSpeed = 0.015; // Turn speed might also be independent of CC or scale differently
 
@@ -86,7 +91,10 @@ class Game {
 
         // Speedometer element
         this.speedDisplay = document.querySelector('.speed-value');
-        this.maxSpeedKmh = baseMaxSpeedKmh * ccMultiplier; // Scale display max speed
+        // The 'this.maxSpeedKmh' property is no longer directly used for speedometer calculation,
+        // as speed is now converted using 'this.universalKmhConversionFactor'.
+        // If needed, the actual top km/h for the current CC can be found via:
+        //   this.maxSpeed * this.universalKmhConversionFactor
 
         // Prevent default touch behaviors - Modified to check for Eruda elements
         document.addEventListener('touchmove', (e) => {
@@ -1119,8 +1127,8 @@ class Game {
     // }
 
     updateSpeedometer() {
-        // Convert speed to km/h (speed is currently in arbitrary units)
-        const speedKmh = Math.abs(this.speed) * (this.maxSpeedKmh / this.maxSpeed);
+        // Convert speed to km/h using the universal conversion factor derived from 150cc.
+        const speedKmh = Math.abs(this.speed) * this.universalKmhConversionFactor;
         this.speedDisplay.textContent = Math.round(speedKmh);
     }
 
