@@ -256,8 +256,8 @@ class Game {
         this.scene.add(this.sparkPoints);
     }
 
-    // Modified to accept kartObject and kartSpeed for bots
-    emitDriftSpark(color, kartObject = this.kart, kartSpeed = this.speed) {
+    // Modified to accept kartObject, kartSpeed, and a random function
+    emitDriftSpark(color, kartObject = this.kart, kartSpeed = this.speed, randomFunction) {
         if (this.driftSparks.length >= this.maxSparks) return; // Don't exceed max
 
         // Calculate position behind rear wheels (adjust offsets as needed)
@@ -283,8 +283,8 @@ class Game {
 
             // Calculate velocity (mostly backwards, slightly outwards and upwards) based on kartSpeed
             const baseVelocity = forward.clone().multiplyScalar(-kartSpeed * 5 - 2); // Use kartSpeed
-            const outwardVelocity = right.clone().multiplyScalar(sideSign * (Math.random() * 2 + 1)); // Sideways spread
-            const upwardVelocity = new THREE.Vector3(0, Math.random() * 2 + 1, 0); // Upward spread
+            const outwardVelocity = right.clone().multiplyScalar(sideSign * (randomFunction() * 2 + 1)); // Sideways spread
+            const upwardVelocity = new THREE.Vector3(0, randomFunction() * 2 + 1, 0); // Upward spread
 
             const velocity = baseVelocity.add(outwardVelocity).add(upwardVelocity);
 
@@ -865,7 +865,7 @@ class Game {
 
                 if (timeSinceLastEmit >= emitInterval) {
                     const sparkColor = this.sparkColors[this.miniTurboStage - 1];
-                    this.emitDriftSpark(sparkColor);
+                    this.emitDriftSpark(sparkColor, this.kart, this.speed, this.playerRandom);
                     this.lastSparkEmitTime = now;
                 }
             }
@@ -1367,7 +1367,7 @@ class Game {
         collisionNormal.y = 0; // Ignore vertical difference for bump direction
         if (collisionNormal.lengthSq() === 0) {
              // Avoid division by zero if perfectly overlapped, apply a default push
-             collisionNormal.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+             collisionNormal.set(this.playerRandom() - 0.5, 0, this.playerRandom() - 0.5);
         }
         collisionNormal.normalize();
 
@@ -1492,16 +1492,17 @@ class Game {
     giveItem(racer) {
         // Check if racer is player or bot
         const isPlayer = (racer.mesh === this.kart);
+        const randomFunction = isPlayer ? this.playerRandom : racer.random;
 
         if (isPlayer) {
             if (this.playerItem === null) { // Only give item if player doesn't have one
-                this.playerItem = this.itemTypes[Math.floor(Math.random() * this.itemTypes.length)];
+                this.playerItem = this.itemTypes[Math.floor(randomFunction() * this.itemTypes.length)];
                 console.log(`Player got item: ${this.playerItem}`);
                 this.updateItemDisplay();
             }
         } else { // It's a bot
              if (racer.item === null) {
-                 racer.item = this.itemTypes[Math.floor(Math.random() * this.itemTypes.length)];
+                 racer.item = this.itemTypes[Math.floor(randomFunction() * this.itemTypes.length)];
                  console.log(`Bot ${this.bots.indexOf(racer)} got item: ${racer.item}`);
              }
         }
@@ -1682,7 +1683,7 @@ class Game {
             bot.dynamicOffsetTimer += deltaTime;
             if (bot.dynamicOffsetTimer >= bot.dynamicOffsetUpdateTime) {
                 const maxDynamicOffset = 4.0;
-                const changeAmount = (Math.random() - 0.5) * 3.0;
+                const changeAmount = (bot.random() - 0.5) * 3.0;
                 bot.dynamicTargetOffset = Math.max(-maxDynamicOffset, Math.min(maxDynamicOffset, bot.dynamicTargetOffset + changeAmount));
                 bot.dynamicOffsetTimer = 0;
             }
@@ -1754,8 +1755,8 @@ class Game {
 
                     if (timeSinceLastEmit >= emitInterval) {
                         const sparkColor = this.sparkColors[bot.miniTurboStage - 1];
-                        // Call the modified function with bot's mesh and speed
-                        this.emitDriftSpark(sparkColor, bot.mesh, bot.speed);
+                        // Call the modified function with bot's mesh, speed, and its PRNG
+                        this.emitDriftSpark(sparkColor, bot.mesh, bot.speed, bot.random);
                         bot.lastSparkEmitTime = now; // Update the bot's specific timer
                     }
                 }
@@ -1890,7 +1891,7 @@ class Game {
             bot.prevPosition = bot.mesh.position.clone();
 
             // --- Basic Bot Item AI ---
-            if (bot.item && Math.random() < botUseItemChance) {
+            if (bot.item && bot.random() < botUseItemChance) {
                  if (bot.item === 'mushroom') {
                      // Use mushroom if not currently turning sharply and not already boosting
                      if (Math.abs(angleDifference) < Math.PI / 8 && bot.mushroomBoostDuration <= 0) {
