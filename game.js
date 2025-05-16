@@ -177,7 +177,7 @@ class Game {
         this.playerTrailedItemType = null;
         this.itemHoldTimeout = null; // Timer for item hold (both UI button and 'e' key)
         this.ITEM_HOLD_THRESHOLD = 200; // ms for hold detection
-        this.buttonHoldThresholdMet = false; // Specific to UI button hold detection
+        // this.buttonHoldThresholdMet = false; // No longer needed
 
         // Item Effect Constants
         this.bananaStunTime = 1.0;
@@ -1101,12 +1101,12 @@ class Game {
         if (useItemElement) {
             const onUseItemPress = () => {
                 this.isItemButtonPressed = true; // General button state
-                this.buttonHoldThresholdMet = false; // Reset UI button specific hold flag
+                // this.buttonHoldThresholdMet = false; // No longer needed
                 if (this.playerItem && !this.playerIsTrailingItem && this.isTrailableItem(this.playerItem)) {
-                    // For UI button (touch/mouse), set timeout to flag hold, don't start trailing yet
+                    // For UI button (touch/mouse), set timeout to actually start trailing
                     this.itemHoldTimeout = setTimeout(() => {
                         if (this.isItemButtonPressed && this.playerItem) { // Check button still pressed & item exists
-                            this.buttonHoldThresholdMet = true;
+                            this.startTrailingItem(); // Start visual trail when hold threshold met
                         }
                     }, this.ITEM_HOLD_THRESHOLD);
                 }
@@ -1117,27 +1117,17 @@ class Game {
                 if (e) { e.preventDefault(); e.stopPropagation(); }
                 clearTimeout(this.itemHoldTimeout);
 
-                if (this.isItemButtonPressed) { // Was the button (UI or key) considered pressed?
+                if (this.isItemButtonPressed) { 
                     if (this.playerIsTrailingItem) {
-                        // If an item is ALREADY being trailed (e.g., by holding 'e' key, then UI button released)
+                        // If an item is visually trailing (due to 'e' key hold or UI button hold)
                         this.deployTrailedItem();
                     } else if (this.playerItem) {
-                        // Player has an item, and it's not currently in playerIsTrailingItem state.
-                        // This block handles UI button tap or UI button hold-release.
-                        if (this.buttonHoldThresholdMet && this.isTrailableItem(this.playerItem)) {
-                            // UI Button was held long enough for a trailable item.
-                            this.startTrailingItem(); // Make item appear visually behind.
-                            if (this.playerIsTrailingItem) { // If startTrailingItem succeeded
-                                this.deployTrailedItem(); // Immediately deploy it.
-                            }
-                        } else {
-                            // UI Button was tapped (or hold was for non-trailable, or threshold not met).
-                            this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
-                        }
+                        // Not trailing, but an item is held: it was a tap or released before hold threshold.
+                        this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
                     }
                 }
                 this.isItemButtonPressed = false;
-                this.buttonHoldThresholdMet = false; // Reset UI button specific flag
+                // this.buttonHoldThresholdMet = false; // No longer needed
                 useItemElement.style.background = 'rgba(100, 100, 255, 0.5)';
             };
 
