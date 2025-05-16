@@ -1122,7 +1122,7 @@ class Game {
                             console.log("[TRAIL DEBUG] UI Item Button: itemHoldTimeout fired. Calling startTrailingItem for:", this.playerItem);
                             this.startTrailingItem(); // Start visual trail when hold threshold met
                         } else {
-                            console.log("[TRAIL DEBUG] UI Item Button: itemHoldTimeout fired, but conditions not met. ButtonPressed:", this.isItemButtonPressed, "PlayerItem:", this.playerItem);
+                            console.log(`[TRAIL DEBUG] UI Item Button: itemHoldTimeout fired, but conditions (isItemButtonPressed: ${this.isItemButtonPressed}, playerItem: ${this.playerItem}) not met. Not calling startTrailingItem.`);
                         }
                     }, this.ITEM_HOLD_THRESHOLD);
                 } else if (this.playerItem) {
@@ -1134,7 +1134,11 @@ class Game {
             const onUseItemEnd = (e) => {
                 if (e) { e.preventDefault(); e.stopPropagation(); }
                 console.log("[TRAIL DEBUG] UI Item Button released.");
+                const timeoutId = this.itemHoldTimeout; // Capture before clearing
                 clearTimeout(this.itemHoldTimeout);
+                if (timeoutId) {
+                    console.log("[TRAIL DEBUG] UI Item Button release: Cleared itemHoldTimeout ID:", timeoutId);
+                }
 
                 if (this.isItemButtonPressed) { 
                     if (this.playerIsTrailingItem) {
@@ -1156,12 +1160,14 @@ class Game {
 
             useItemElement.addEventListener('touchstart', (e) => {
                 e.preventDefault(); e.stopPropagation();
+                console.log("[TRAIL DEBUG] UI Button: touchstart event triggered.");
                 onUseItemPress();
             }, { passive: false });
             useItemElement.addEventListener('touchend', onUseItemEnd, { passive: false });
             useItemElement.addEventListener('touchcancel', onUseItemEnd, { passive: false });
 
             useItemElement.addEventListener('mousedown', (e) => {
+                console.log("[TRAIL DEBUG] UI Button: mousedown event triggered.");
                 onUseItemPress();
             });
             useItemElement.addEventListener('mouseup', (e) => {
