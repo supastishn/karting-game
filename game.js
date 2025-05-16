@@ -1110,6 +1110,8 @@ class Game {
         // Special handling for useItem touch control to call the function directly
         const useItemElement = document.getElementById('use-item-button');
         if (useItemElement) {
+            console.log("[SETUP DEBUG] useItemElement found for touch listeners:", useItemElement ? 'Yes' : 'No'); // Added log
+
             const onUseItemPress = () => {
                 console.log("[TRAIL DEBUG] UI Item Button pressed. Player item:", this.playerItem, "Is trailing:", this.playerIsTrailingItem);
                 this.isItemButtonPressed = true; // General button state
@@ -1159,8 +1161,10 @@ class Game {
             };
 
             useItemElement.addEventListener('touchstart', (e) => {
-                e.preventDefault(); e.stopPropagation();
-                console.log("[TRAIL DEBUG] UI Button: touchstart event triggered.");
+                console.log("[RAW TOUCHSTART] 'use-item-button' touchstart event fired."); // Added very early log
+                e.preventDefault(); 
+                e.stopPropagation();
+                console.log("[TRAIL DEBUG] UI Button: touchstart event triggered."); // Existing log, now after raw log
                 onUseItemPress();
             }, { passive: false });
             useItemElement.addEventListener('touchend', onUseItemEnd, { passive: false });
@@ -1179,6 +1183,8 @@ class Game {
                     onUseItemEnd(null); // Call common end logic. It will handle clearTimeout and other resets.
                 }
             });
+        } else {
+            console.error("[SETUP DEBUG] useItemElement was NOT found for touch listeners!"); // Added else case log
         }
         
         // Special handling for rearView touch control (hold)
