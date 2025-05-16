@@ -968,7 +968,8 @@ class Game {
             }
             // Rear view toggle with 'c' key
             if (e.key.toLowerCase() === 'c' && !wasPressed) {
-                this.toggleRearView();
+                // this.toggleRearView(); // Replaced with direct state change
+                this.isRearViewActive = true;
             }
         });
         window.addEventListener('keyup', (e) => {
@@ -976,7 +977,10 @@ class Game {
             if (e.key === ' ') {
                 this.touchControls.drift = false;
             }
-            // No keyup action needed for 'c' as it's a toggle
+            // Set rear view to false on key up for 'c'
+            if (e.key.toLowerCase() === 'c') {
+                this.isRearViewActive = false;
+            }
         });
         
         // Touch controls with improved handling
@@ -1017,11 +1021,11 @@ class Game {
         addTouchListener('left-button', 'left');
         addTouchListener('right-button', 'right');
         addTouchListener('drift-button', 'drift');
-        // addTouchListener('use-item-button', 'useItem'); // Add listener for the new button
-        // Use item already has special handling, so no need for generic addTouchListener
+        // addTouchListener('use-item-button', 'useItem'); 
+        // Use item already has special handling.
 
-        // Touch listener for rear view button
-        addTouchListener('rear-view-button', 'rearView');
+        // Touch listener for rear view button is now handled explicitly below, not via addTouchListener
+        // addTouchListener('rear-view-button', 'rearView'); 
 
 
         // Special handling for useItem touch control to call the function directly
@@ -1040,27 +1044,31 @@ class Game {
             }, { passive: false });
         }
         
-        // Special handling for rearView touch control (toggle)
+        // Special handling for rearView touch control (hold)
         const rearViewElement = document.getElementById('rear-view-button');
         if (rearViewElement) {
-            const rearViewTouchStart = (e) => {
+            const rearViewStart = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.toggleRearView(); // Toggle on press
+                this.isRearViewActive = true;
                 rearViewElement.style.background = 'rgba(150, 150, 150, 0.8)'; // Darker feedback
             };
-            const rearViewTouchEnd = (e) => {
+            const rearViewEnd = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // No action on release for toggle, just restore style
-                rearViewElement.style.background = 'rgba(150, 150, 150, 0.5)';
+                this.isRearViewActive = false;
+                rearViewElement.style.background = 'rgba(150, 150, 150, 0.5)'; // Restore background
             };
 
-            rearViewElement.addEventListener('touchstart', rearViewTouchStart, { passive: false });
-            rearViewElement.addEventListener('touchend', rearViewTouchEnd, { passive: false }); // To restore style
-            // Mouse events for testing toggle
-            rearViewElement.addEventListener('mousedown', rearViewTouchStart);
-            rearViewElement.addEventListener('mouseup', rearViewTouchEnd);
+            // Touch events
+            rearViewElement.addEventListener('touchstart', rearViewStart, { passive: false });
+            rearViewElement.addEventListener('touchend', rearViewEnd, { passive: false });
+            rearViewElement.addEventListener('touchcancel', rearViewEnd, { passive: false }); // Handle cancel
+
+            // Mouse events for testing
+            rearViewElement.addEventListener('mousedown', rearViewStart);
+            rearViewElement.addEventListener('mouseup', rearViewEnd);
+            rearViewElement.addEventListener('mouseleave', rearViewEnd); // Handle mouse leaving button area
         }
 
 
@@ -1083,10 +1091,10 @@ class Game {
         }
     }
 
-    toggleRearView() {
-        this.isRearViewActive = !this.isRearViewActive;
-        console.log("Rear view toggled:", this.isRearViewActive);
-    }
+    // toggleRearView() { // Method no longer needed as it's hold-based
+    //     this.isRearViewActive = !this.isRearViewActive;
+    //     console.log("Rear view toggled:", this.isRearViewActive);
+    // }
 
     updateSpeedometer() {
         // Convert speed to km/h (speed is currently in arbitrary units)

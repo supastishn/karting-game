@@ -147,13 +147,16 @@ body {
 }
 
 #rear-view-button {
-    /* position: fixed; top: 220px; right: 20px; -- Removed for mobile controls integration */
     background: rgba(150, 150, 150, 0.5); /* Grey background */
-    font-size: 28px; /* Icon size */
     color: white;
     pointer-events: auto;
-    margin-bottom: 10px; /* Consistent spacing with use-item-button */
-    /* Inherits size, border-radius, display, align, justify, user-select from .control-button */
+    /* Inherits border-radius, display, align, justify, user-select from .control-button */
+    /* New styling for under position display */
+    width: 50px; /* Smaller width */
+    height: 50px; /* Smaller height */
+    font-size: 24px; /* Smaller icon/text */
+    margin-top: 10px; /* Space below position display */
+    /* Removed margin-bottom */
 }
 
 #rear-view-button.hidden {
