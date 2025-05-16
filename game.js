@@ -1644,13 +1644,21 @@ class Game {
 
         const totalRacers = allRacersForRanking.length;
         let availableItems;
+        let chosenItem;
 
         if (rank === 1) {
-            availableItems = ['banana', 'greenShell'];
-            console.log(`${racerUniqueId} is 1st, gets Tier 1 items.`);
+            console.log(`${racerUniqueId} is 1st, attempting to get Tier 1 item.`);
+            const randRoll = randomFunction(); // Get a random number between 0 and 1
+            if (randRoll < 0.80) { // 80% chance for banana
+                chosenItem = 'banana';
+            } else { // 20% chance for green shell
+                chosenItem = 'greenShell';
+            }
+            // availableItems will not be used directly for rank 1, chosenItem is set directly.
         } else if (rank === totalRacers) { // Last place
             availableItems = ['boo', 'lightningBolt', 'mushroom'];
             console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 items.`);
+            chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         } else if (rank > Math.ceil(totalRacers / 2)) { // Back half of the pack (but not last)
             availableItems = ['mushroom', 'boo', 'fakeItemBox'];
             console.log(`${racerUniqueId} is ${rank} (back half), gets Tier 3 items.`);
@@ -1659,11 +1667,13 @@ class Game {
             console.log(`${racerUniqueId} is ${rank} (front half), gets Tier 2 items.`);
         }
         
-        if (!availableItems || availableItems.length === 0) { // Fallback, should not happen
+        if (rank !== 1 && (!availableItems || availableItems.length === 0)) { // Fallback for other ranks
             availableItems = ['mushroom']; 
+            chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
+        } else if (rank !== 1) { // For ranks other than 1, chosenItem is already set from availableItems
+            // chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)]; // This line is now covered above or not needed for rank 1
         }
 
-        const chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
 
         if (isPlayer) {
             if (this.playerItem === null) {
