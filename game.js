@@ -2996,7 +2996,7 @@ class Game {
             targetRacer: targetRacer, // Store the racer object itself
             owner: firer,
             lifetime: this.blueShellLifetime,
-            speed: this.maxSpeed * 2.0, // Blue shell speed is 2x current CC maxSpeed
+            speed: this.maxSpeed * 3.0, // Blue shell speed is 3x current CC maxSpeed
             heightOffset: 5.0, // Initial height offset, will smoothly decrease
             state: 'flying_high' // Initial state: 'flying_high', 'homing', 'diving'
         });
