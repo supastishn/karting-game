@@ -165,6 +165,7 @@ class Game {
         this.playerMushroomBoostDuration = 0;
         this.playerIsInvisible = false; // For Boo
         this.playerInvisibilityDuration = 0; // For Boo
+        this.playerIsAttemptingBooSteal = false; // For Boo steal attempt after invisibility
         this.playerShrinkDuration = 0; // For Lightning
         this.originalPlayerScale = new THREE.Vector3(1, 1, 1); // Store original scale
 
@@ -699,6 +700,7 @@ class Game {
                 // Bot specific item effect states
                 isInvisible: false,
                 invisibilityDuration: 0,
+                isAttemptingBooSteal: false, // For Boo steal attempt after invisibility
                 shrinkDuration: 0,
                 originalScale: new THREE.Vector3(1, 1, 1) // Store original scale for each bot
             });
@@ -1174,16 +1176,33 @@ class Game {
         }
 
         // --- Handle Player Effects (Boo, Lightning, Stun) ---
-        if (this.playerIsInvisible) {
+        if (this.playerIsInvisible) { // Handles Boo invisibility primarily
             this.playerInvisibilityDuration -= deltaTime;
+
             if (this.playerInvisibilityDuration <= 0) {
+                // Invisibility duration from Boo has ended.
+                if (this.playerIsAttemptingBooSteal) {
+                    const itemStolenSuccessfully = this.stealItemWithBoo(this.kart); // 'this.kart' is the racer object for player
+
+                    if (itemStolenSuccessfully) {
+                        // stealItemWithBoo already put the item in this.playerItem
+                        console.log(`Boo stole ${this.playerItem} for Player!`);
+                    } else {
+                        this.playerItem = null; // Consume the 'boo' as steal failed
+                        console.log("Player's Boo failed to steal an item; Boo is consumed.");
+                    }
+                    this.playerIsAttemptingBooSteal = false;
+                    this.updateItemDisplay(); // Update display with new item or empty
+                }
+
+                // Restore visibility unless another effect keeps player invisible
+                // For now, assume Boo was the only source of this invisibility state
                 this.playerIsInvisible = false;
                 this.kart.traverse(child => {
                     if (child.isMesh) {
                         child.material.opacity = 1.0;
-                        // If original material wasn't transparent, set transparent = false
-                        // For simplicity, assuming the kart material instance handles this
-                        // or that it was made transparent when Boo started.
+                        // Consider if material was originally transparent:
+                        // child.material.transparent = child.material.userData.wasTransparent || false;
                     }
                 });
             }
@@ -2212,54 +2231,32 @@ class Game {
 
     // --- Boo (Ghost) Logic ---
     useBoo(racer) {
-        const isPlayerBooUser = (racer.mesh === this.kart); // Renamed for clarity
+        const isPlayerBooUser = (racer.mesh === this.kart);
         console.log(`${isPlayerBooUser ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used Boo!`); // KEEP THIS LOG
 
         if (isPlayerBooUser) {
             this.playerIsInvisible = true;
             this.playerInvisibilityDuration = this.booDuration;
+            this.playerIsAttemptingBooSteal = true; // Flag for delayed steal
             this.kart.traverse(child => {
                 if (child.isMesh) {
-                    child.material.transparent = true; // Ensure material is transparent
+                    child.material.transparent = true;
                     child.material.opacity = 0.4;
                 }
             });
         } else { // It's a bot
             racer.isInvisible = true;
             racer.invisibilityDuration = this.booDuration;
-            racer.mesh.traverse(child => { // racer.mesh is now the cloned group
+            racer.isAttemptingBooSteal = true; // Flag for delayed steal
+            racer.mesh.traverse(child => {
                 if (child.isMesh) {
                     child.material.transparent = true;
                     child.material.opacity = 0.4;
                 }
             });
         }
-
-        // Item Stealing Logic
-        // stealItemWithBoo will set this.playerItem or racer.item to the stolen item if successful.
-        // If not successful, the user's item slot still holds 'boo' at this point.
-        const itemStolenSuccessfully = this.stealItemWithBoo(racer);
-
-        if (itemStolenSuccessfully) {
-            // Invisibility ends because an item was stolen.
-            // The user's item slot (this.playerItem or racer.item) now contains the STOLEN item.
-            if (isPlayerBooUser) {
-                this.playerInvisibilityDuration = 0; // Will be processed in updateKart
-            } else {
-                racer.invisibilityDuration = 0; // Will be processed in updateBots
-            }
-            console.log("Boo effect ended due to successful steal.");
-        } else {
-            // Steal failed. The 'boo' item currently in the slot should be consumed.
-            // Invisibility continues for its normal duration.
-            if (isPlayerBooUser) {
-                this.playerItem = null; // Consume the 'boo' as steal failed
-            } else {
-                racer.item = null; // Consume the 'boo' for the bot as steal failed
-            }
-            console.log("Boo failed to steal an item; Boo is consumed, invisibility continues.");
-        }
-        // The player's item display will be updated by the calling useItem function.
+        // The 'boo' item remains in the slot. Stealing and item slot update will happen in updateKart/updateBots.
+        // The player's item display will be updated by the calling useItem function, showing 'boo'.
     }
     
     stealItemWithBoo(thief) {
@@ -2403,14 +2400,30 @@ class Game {
 
         this.bots.forEach((bot, botIndex) => {
             // --- Handle Bot Effects (Boo, Lightning, Stun) ---
-            if (bot.isInvisible) {
+            if (bot.isInvisible) { // Handles Boo invisibility primarily
                 bot.invisibilityDuration -= deltaTime;
+
                 if (bot.invisibilityDuration <= 0) {
+                    // Invisibility duration from Boo has ended for the bot.
+                    if (bot.isAttemptingBooSteal) {
+                        const itemStolenSuccessfully = this.stealItemWithBoo(bot);
+
+                        if (itemStolenSuccessfully) {
+                            // stealItemWithBoo already put the item in bot.item
+                            console.log(`Boo stole ${bot.item} for Bot ${botIndex}!`);
+                        } else {
+                            bot.item = null; // Consume the 'boo' as steal failed
+                            console.log(`Bot ${botIndex}'s Boo failed to steal an item; Boo is consumed.`);
+                        }
+                        bot.isAttemptingBooSteal = false;
+                    }
+
+                    // Restore visibility unless another effect keeps bot invisible
                     bot.isInvisible = false;
                     bot.mesh.traverse(child => {
                         if (child.isMesh) {
                             child.material.opacity = 1.0;
-                            // child.material.transparent = false; // Assuming original materials are not transparent by default
+                            // Consider if material was originally transparent
                         }
                     });
                 }
