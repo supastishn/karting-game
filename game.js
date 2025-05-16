@@ -262,6 +262,8 @@ class Game {
                 '/Shaded/shaded.png', // Path to the texture file
                 (texture) => {
                     // Texture loaded successfully
+                    this.playerKartTexture = texture; // Store the loaded texture for bots
+
                     objLoader.load(
                         '/Shaded/base.obj', // Path to your OBJ file
                         (object) => {
@@ -341,6 +343,9 @@ class Game {
                     console.error('An error happened while loading the texture:', error);
                     // Fallback: Load OBJ with default material if texture fails, or reject
                     // For simplicity, we'll try to load the OBJ with a basic material
+                    // Player kart texture is not available here, so bots will also use default material if this path is taken.
+                    this.playerKartTexture = null; // Explicitly set to null if texture loading failed.
+
                     objLoader.load(
                         '/Shaded/base.obj',
                         (object) => {
@@ -527,10 +532,22 @@ class Game {
     }
 
     createBots(numberOfBots) {
-        const botGeometry = new THREE.BoxGeometry(1, 0.5, 2);
-        const botColors = [0xff0000, 0x00ff00, 0x0000ff]; // Red, Green, Blue for bots
+        if (!this.kart) {
+            console.error("Player kart model not loaded. Cannot create bots with custom model.");
+            // Optionally, implement a fallback to box bots here if desired
+            return;
+        }
+
+        const botTintColors = [
+            new THREE.Color(0xff6666), // Light Red
+            new THREE.Color(0x66ff66), // Light Green
+            new THREE.Color(0x66aaff), // Light Blue
+            new THREE.Color(0xffff66), // Light Yellow
+            new THREE.Color(0xff66ff), // Light Magenta
+            new THREE.Color(0x66ffff)  // Light Cyan
+        ];
         const startOffset = 5.0; // How far behind the line bots start
-        const spacing = 2.0; // Spacing between bots
+        const spacing = 2.5; // Spacing between bots, slightly increased for larger models
 
         // Use the starting parameters of the *new* first checkpoint (index 0)
         const newStartCheckpoint = this.checkpoints[0]; // Get the data for the new checkpoint 1
@@ -551,19 +568,39 @@ class Game {
             // --- Create Bot PRNG ---
             const botSeed = baseSeed + i + 1;
             const botRandom = mulberry32(botSeed);
-            this.botRandomGenerators[i] = botRandom; // Store the generator
+            this.botRandomGenerators[i] = botRandom;
             // --- End Bot PRNG ---
             
-            const botMaterial = new THREE.MeshBasicMaterial({ color: botColors[i % botColors.length] });
-            const botMesh = new THREE.Mesh(botGeometry, botMaterial);
+            const botMesh = this.kart.clone(true); // Deep clone the player's kart model
+            const tintColor = botTintColors[i % botTintColors.length];
 
-            // Calculate staggered starting position (just after the checkpoint)
-            const botStartPosition = new THREE.Vector3(startParams.x, 0.25, startParams.z)
-                .addScaledVector(forwardVector, startOffset + i * 1.5) // Stagger depth *after* line
-                .addScaledVector(sideVector, (i % 2 === 0 ? 1 : -1) * spacing * Math.ceil((i+1)/2)); // Stagger side
+            botMesh.traverse((child) => {
+                if (child.isMesh) {
+                    // Clone the material to ensure each bot has its own instance
+                    child.material = child.material.clone();
+                    // Apply the tint. If playerKartTexture was null (texture load failed), this will color a basic material
+                    child.material.color.set(tintColor);
+                    if (this.playerKartTexture) {
+                        child.material.map = this.playerKartTexture; // Ensure map is set if texture exists
+                    }
+                }
+            });
+            
+            // Scale the bot model to match player kart's scale (derived from desiredHeight)
+            botMesh.scale.copy(this.kart.scale); 
 
-            botMesh.position.copy(botStartPosition);
-            botMesh.rotation.y = startRotation; // Start facing the new direction (180 deg turn)
+            // Calculate staggered starting position
+            const botStartPositionBase = new THREE.Vector3(startParams.x, 0, startParams.z) // Start at y=0, will adjust
+                .addScaledVector(forwardVector, startOffset + i * 1.5) 
+                .addScaledVector(sideVector, (i % 2 === 0 ? 1 : -1) * spacing * Math.ceil((i+1)/2)); 
+            
+            botMesh.position.copy(botStartPositionBase);
+            
+            // Adjust Y position based on the cloned model's bounding box
+            const botBoundingBox = new THREE.Box3().setFromObject(botMesh);
+            botMesh.position.y -= botBoundingBox.min.y; // Align bottom of bot kart with track surface
+
+            botMesh.rotation.y = startRotation;
 
             this.scene.add(botMesh);
 
@@ -2105,11 +2142,15 @@ class Game {
                     child.material.opacity = 0.4;
                 }
             });
-        } else {
+        } else { // It's a bot
             racer.isInvisible = true;
             racer.invisibilityDuration = this.booDuration;
-            racer.mesh.material.opacity = 0.4;
-            racer.mesh.material.transparent = true;
+            racer.mesh.traverse(child => { // racer.mesh is now the cloned group
+                if (child.isMesh) {
+                    child.material.transparent = true;
+                    child.material.opacity = 0.4;
+                }
+            });
         }
         // Item Stealing Logic (simple: steal from racer in front, or random if user is 1st)
         this.stealItemWithBoo(racer);
@@ -2212,8 +2253,12 @@ class Game {
                 bot.invisibilityDuration -= deltaTime;
                 if (bot.invisibilityDuration <= 0) {
                     bot.isInvisible = false;
-                    bot.mesh.material.opacity = 1.0; // Assuming default material is not transparent
-                    // bot.mesh.material.transparent = false; // If it was set
+                    bot.mesh.traverse(child => {
+                        if (child.isMesh) {
+                            child.material.opacity = 1.0;
+                            // child.material.transparent = false; // Assuming original materials are not transparent by default
+                        }
+                    });
                 }
             }
             if (bot.shrinkDuration > 0) {
