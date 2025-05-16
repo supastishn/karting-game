@@ -123,21 +123,42 @@ class Game {
         this.impulseDecay = 0.85; // How quickly bump effect fades
 
         // Item System
-        this.itemTypes = ['mushroom', 'banana'];
+        this.itemTypes = ['mushroom', 'banana', 'greenShell', 'fakeItemBox', 'boo', 'lightningBolt'];
         this.itemBoxes = [];
         this.itemBoxMeshes = []; // Store the visual meshes separately
         this.itemBoxRespawnTime = 8.0; // Seconds for item box to respawn
+        
+        // Active Items Storage
         this.droppedBananas = []; // Store active banana objects {mesh, owner}
-        this.playerItem = null; // 'mushroom', 'banana', or null
-        this.playerStunDuration = 0; // Time player is stunned by banana
-        this.playerMushroomBoostDuration = 0; // Time mushroom boost is active
-        this.bananaStunTime = 1.0; // Duration of banana stun in seconds
+        this.activeGreenShells = []; // {mesh, velocity, owner, bouncesLeft, lifetime}
+        this.droppedFakeItemBoxes = []; // {mesh, owner}
+
+        // Player Item State
+        this.playerItem = null;
+        this.playerStunDuration = 0;
+        this.playerMushroomBoostDuration = 0;
+        this.playerIsInvisible = false; // For Boo
+        this.playerInvisibilityDuration = 0; // For Boo
+        this.playerShrinkDuration = 0; // For Lightning
+        this.originalPlayerScale = new THREE.Vector3(1, 1, 1); // Store original scale
+
+        // Item Effect Constants
+        this.bananaStunTime = 1.0;
         this.mushroomBoostMultiplier = 1.5;
-        this.mushroomBoostTime = 2.0; // Duration of mushroom boost in seconds
+        this.mushroomBoostTime = 2.0;
+        this.greenShellSpeed = 0.3;
+        this.greenShellBounces = 3;
+        this.greenShellLifetime = 7.0; // seconds
+        this.greenShellStunTime = 1.0;
+        this.fakeItemBoxStunTime = 0.5; // Shorter stun
+        this.booDuration = 5.0;
+        this.lightningShrinkDuration = 4.0;
+        this.lightningShrinkScaleFactor = 0.5;
+        this.lightningStunTime = 0.8; // Initial stun when hit by lightning
 
         // Lap counting system
         this.currentLap = 1;
-        this.maxLaps = 3;
+        this.maxLaps = 7; // Changed to 7 laps
         this.checkpointsPassed = 0;
         this.totalCheckpoints = 4; // We'll divide track into 4 sectors
         this.lastCheckpoint = -1;
@@ -454,9 +475,18 @@ class Game {
                 // Item state for bots
                 item: null,
                 stunDuration: 0,
-                mushroomBoostDuration: 0
+                mushroomBoostDuration: 0,
+                // Bot specific item effect states
+                isInvisible: false,
+                invisibilityDuration: 0,
+                shrinkDuration: 0,
+                originalScale: new THREE.Vector3(1, 1, 1) // Store original scale for each bot
             });
         }
+        // Store original scale for player kart
+        this.kart.getWorldScale(this.originalPlayerScale);
+        // Store original scale for bots
+        this.bots.forEach(bot => bot.mesh.getWorldScale(bot.originalScale));
     }
 
     createRaceTrack() {
@@ -799,13 +829,53 @@ class Game {
             return;
         }
 
-        // --- Check Stun ---
+        // --- Handle Player Effects (Boo, Lightning, Stun) ---
+        if (this.playerIsInvisible) {
+            this.playerInvisibilityDuration -= deltaTime;
+            if (this.playerInvisibilityDuration <= 0) {
+                this.playerIsInvisible = false;
+                this.kart.material.opacity = 1.0;
+                // this.kart.material.transparent might need to be false if no other transparency effects
+            }
+        }
+        if (this.playerShrinkDuration > 0) {
+            this.playerShrinkDuration -= deltaTime;
+            if (this.playerShrinkDuration <= 0) {
+                this.kart.scale.copy(this.originalPlayerScale); // Restore scale
+            }
+        }
         if (this.playerStunDuration > 0) {
-            this.playerStunDuration -= deltaTime; // Use deltaTime
-            // Keep camera updated, but skip all movement/input logic
+            this.playerStunDuration -= deltaTime;
+            this.updateCamera(); 
+            this.updateSpeedometer();
+            // Kart can still be controlled slightly or just shows stun effect
+            // For now, full stop of input processing is below, this just ticks down stun
+            if (this.playerStunDuration <=0) { /* stun just ended */ }
+            // If stunned, we might want to prevent most actions below.
+            // For now, the main movement restriction comes from speed being set to 0 or low.
+        }
+        // If stunned, significantly reduce ability to control or move
+        const isPlayerActuallyStunned = this.playerStunDuration > 0;
+
+
+        // Store previous position *before* calculating new position for this frame
+        this.lastKartPosition.copy(this.kart.position);
+
+        // If stunned, skip most input and movement logic
+        if (isPlayerActuallyStunned) {
+            // Apply strong deceleration if stunned
+            this.speed = Math.abs(this.speed) < this.deceleration * 2 ? 0 :
+                         this.speed - Math.sign(this.speed) * this.deceleration * 2;
+            const movement = new THREE.Vector3(
+                Math.sin(this.kart.rotation.y) * this.speed,
+                0,
+                Math.cos(this.kart.rotation.y) * this.speed
+            );
+            this.kart.position.add(movement);
+            this.kart.position.y = 0.25 + this.hopHeight; // Keep hop physics if mid-hop during stun
             this.updateCamera();
             this.updateSpeedometer();
-            return;
+            return; // Skip normal controls and movement updates
         }
 
         // Store previous position *before* calculating new position for this frame
@@ -991,6 +1061,10 @@ class Game {
         // Apply off-road penalty
         if (this.isOffRoad(this.kart.position)) {
             this.targetSpeedLimit *= this.offRoadMultiplier;
+        }
+        // Apply shrink penalty from lightning
+        if (this.playerShrinkDuration > 0) {
+            this.targetSpeedLimit *= 0.6; // Reduced speed while shrunk
         }
 
         // Smoothly interpolate current speed limit
@@ -1328,36 +1402,61 @@ class Game {
 
     checkKartCollisions() {
         const kartRadius = 1.1; // Approximate radius for collision sphere
-        const playerSphere = new THREE.Sphere(this.kart.position, kartRadius);
-
+        
         // Player vs Bots
-        this.bots.forEach(bot => {
-            const botSphere = new THREE.Sphere(bot.mesh.position, kartRadius);
-            if (playerSphere.intersectsSphere(botSphere)) {
-                this.handleKartCollision(
-                    { mesh: this.kart, impulse: this.impulse }, // Player object wrapper
-                    bot // Bot object already has mesh and impulse
-                );
-            }
-        });
+        if (!this.playerIsInvisible) { // Player can't hit or be hit if invisible
+            const playerSphere = new THREE.Sphere(this.kart.position, kartRadius);
+            this.bots.forEach(bot => {
+                if (!bot.isInvisible) { // Bot can't be hit if invisible
+                    const botSphere = new THREE.Sphere(bot.mesh.position, kartRadius);
+                    if (playerSphere.intersectsSphere(botSphere)) {
+                        this.handleKartCollision(
+                            { mesh: this.kart, impulse: this.impulse, speed: this.speed }, // Pass player object wrapper
+                            bot // Bot object already has mesh, impulse, and speed
+                        );
+                    }
+                }
+            });
+        }
 
         // Bots vs Bots
         for (let i = 0; i < this.bots.length; i++) {
             for (let j = i + 1; j < this.bots.length; j++) {
                 const botA = this.bots[i];
                 const botB = this.bots[j];
+
+                // Skip collision if either bot is invisible
+                if (botA.isInvisible || botB.isInvisible) continue;
+
                 const sphereA = new THREE.Sphere(botA.mesh.position, kartRadius);
                 const sphereB = new THREE.Sphere(botB.mesh.position, kartRadius);
 
                 if (sphereA.intersectsSphere(sphereB)) {
-                    this.handleKartCollision(botA, botB);
+                    this.handleKartCollision(botA, botB); // botA and botB already have .speed
                 }
             }
         }
     }
 
     handleKartCollision(racerA, racerB) {
-        const bumpImpulseMagnitude = 0.15; // How strong the bump is
+        // Use a base magnitude, potentially influenced by relative speeds later
+        const bumpImpulseMagnitudeBase = 0.12; 
+        
+        // If one racer is significantly shrunk, they might be bumped more easily
+        // or bump with less force. For now, keeping it simple.
+        let magA = bumpImpulseMagnitudeBase;
+        let magB = bumpImpulseMagnitudeBase;
+
+        // Example: If racerA is shrunk, it receives a slightly larger impulse from B
+        if ((racerA.mesh === this.kart && this.playerShrinkDuration > 0) || (racerA.shrinkDuration && racerA.shrinkDuration > 0)) {
+            magB *= 1.3; // B pushes shrunk A more
+            magA *= 0.7; // Shrunk A pushes B less
+        }
+        if ((racerB.mesh === this.kart && this.playerShrinkDuration > 0) || (racerB.shrinkDuration && racerB.shrinkDuration > 0)) {
+            magA *= 1.3; // A pushes shrunk B more
+            magB *= 0.7; // Shrunk B pushes A less
+        }
+
 
         const posA = racerA.mesh.position;
         const posB = racerB.mesh.position;
@@ -1373,15 +1472,18 @@ class Game {
 
 
         // Apply impulse - add to existing impulse to allow multiple bumps
-        const impulseA = collisionNormal.clone().multiplyScalar(bumpImpulseMagnitude);
-        const impulseB = collisionNormal.clone().multiplyScalar(-bumpImpulseMagnitude);
+        // Use potentially modified magnitudes
+        const impulseForA = collisionNormal.clone().multiplyScalar(magA);
+        const impulseForB = collisionNormal.clone().multiplyScalar(-magB); // Negative for opposite direction
 
-        racerA.impulse.add(impulseA);
+        racerA.impulse.add(impulseForA);
         racerB.impulse.add(impulseB);
 
-        // Optional: Add slight speed reduction or stun effect here if desired later
-        // racerA.speed *= 0.95;
-        // racerB.speed *= 0.95;
+        racerB.impulse.add(impulseForB);
+
+        // Optional: Add slight speed reduction based on relative speeds or if one is boosting
+        // e.g., if racerA.speed is much higher, racerB might lose more speed.
+        // For now, the impulse handles the primary effect.
     }
 
     // --- End Collision Handling ---
@@ -1478,7 +1580,11 @@ class Game {
         if (this.playerItem) {
             let itemSymbol = '?';
             if (this.playerItem === 'mushroom') itemSymbol = '🍄';
-            if (this.playerItem === 'banana') itemSymbol = '🍌';
+            else if (this.playerItem === 'banana') itemSymbol = '🍌';
+            else if (this.playerItem === 'greenShell') itemSymbol = '🐢'; // Green shell
+            else if (this.playerItem === 'fakeItemBox') itemSymbol = '❓'; // Fake item box
+            else if (this.playerItem === 'boo') itemSymbol = '👻'; // Boo
+            else if (this.playerItem === 'lightningBolt') itemSymbol = '⚡'; // Lightning
             this.itemNameDisplay.textContent = itemSymbol;
             this.itemDisplay.classList.remove('hidden');
             this.useItemButton.classList.remove('hidden'); // Show use button if item held
@@ -1520,6 +1626,14 @@ class Game {
             this.useBanana(racer);
         } else if (itemToUse === 'mushroom') {
             this.useMushroom(racer);
+        } else if (itemToUse === 'greenShell') {
+            this.useGreenShell(racer);
+        } else if (itemToUse === 'fakeItemBox') {
+            this.useFakeItemBox(racer);
+        } else if (itemToUse === 'boo') {
+            this.useBoo(racer);
+        } else if (itemToUse === 'lightningBolt') {
+            this.useLightningBolt(racer); // Pass the user
         }
 
         // Clear the item after use
@@ -1566,20 +1680,222 @@ class Game {
         console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit a banana!`);
 
         if (isPlayer) {
+            if (this.playerIsInvisible) return; // Immune if Boo is active
             this.playerStunDuration = this.bananaStunTime;
-            this.speed = 0; // Stop immediately
-            this.playerMushroomBoostDuration = 0; // Cancel mushroom boost
-            this.boosting = false; // Cancel mini-turbo boost
-            this.isDrifting = false; // Cancel drift
+            this.speed *= 0.3; // Drastically reduce speed, not full stop
+            this.playerMushroomBoostDuration = 0; 
+            this.boosting = false; 
+            this.isDrifting = false; 
             this.driftActive = false;
         } else {
+            if (racer.isInvisible) return; // Immune if Boo is active
             racer.stunDuration = this.bananaStunTime;
-            racer.speed = 0;
+            racer.speed *= 0.3;
             racer.mushroomBoostDuration = 0;
             racer.boosting = false;
             racer.isDrifting = false;
         }
     }
+
+    // --- Green Shell Logic ---
+    useGreenShell(racer) {
+        const shellGeometry = new THREE.SphereGeometry(0.6, 8, 6);
+        const shellMaterial = new THREE.MeshBasicMaterial({ color: 0x00cc00 }); // Green
+        const shellMesh = new THREE.Mesh(shellGeometry, shellMaterial);
+
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(racer.mesh.quaternion);
+        let fireDirection = forward.clone();
+        
+        // Basic check: if racer is player and holding 's' or backward touch, fire backward
+        const isPlayer = (racer.mesh === this.kart);
+        if (isPlayer && (this.keys['s'] || this.touchControls.backward)) {
+            fireDirection.negate();
+        }
+        // Bot simple decision (could be smarter)
+        if (!isPlayer && racer.random() < 0.3) { // 30% chance to fire backward if bot
+            fireDirection.negate();
+        }
+
+
+        const spawnPosition = racer.mesh.position.clone().addScaledVector(fireDirection, 1.5);
+        spawnPosition.y = 0.5; // Height of shell
+
+        shellMesh.position.copy(spawnPosition);
+        this.scene.add(shellMesh);
+
+        this.activeGreenShells.push({
+            mesh: shellMesh,
+            velocity: fireDirection.multiplyScalar(this.greenShellSpeed),
+            owner: racer,
+            bouncesLeft: this.greenShellBounces,
+            lifetime: this.greenShellLifetime
+        });
+    }
+
+    applyGreenShellHit(racer) {
+        const isPlayer = (racer.mesh === this.kart);
+        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit by a Green Shell!`);
+
+        if (isPlayer) {
+            if (this.playerIsInvisible) return;
+            this.playerStunDuration = this.greenShellStunTime;
+            this.speed *= 0.2;
+            this.playerMushroomBoostDuration = 0;
+            this.boosting = false;
+            this.isDrifting = false;
+            this.driftActive = false;
+        } else {
+            if (racer.isInvisible) return;
+            racer.stunDuration = this.greenShellStunTime;
+            racer.speed *= 0.2;
+            racer.mushroomBoostDuration = 0;
+            racer.boosting = false;
+            racer.isDrifting = false;
+        }
+    }
+
+    // --- Fake Item Box Logic ---
+    useFakeItemBox(racer) {
+        const boxGeometry = new THREE.BoxGeometry(1.8, 1.8, 1.8); // Slightly smaller than real box
+        // Red question mark texture for fake item boxes
+        const canvas = document.createElement('canvas');
+        canvas.width = 64; canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(200, 0, 0, 0.7)'; // Semi-transparent red background
+        ctx.fillRect(0,0,64,64);
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 48px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', 32, 36);
+        const texture = new THREE.CanvasTexture(canvas);
+        const boxMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+
+        const fakeBoxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+
+        const backwardOffset = -2.5;
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(racer.mesh.quaternion);
+        const dropPosition = racer.mesh.position.clone().addScaledVector(forward, backwardOffset);
+        dropPosition.y = 1.0; // Same height as real item boxes
+
+        fakeBoxMesh.position.copy(dropPosition);
+        this.scene.add(fakeBoxMesh);
+        this.droppedFakeItemBoxes.push({ mesh: fakeBoxMesh, owner: racer });
+    }
+
+    applyFakeItemBoxHit(racer) {
+        const isPlayer = (racer.mesh === this.kart);
+        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit a Fake Item Box!`);
+        if (isPlayer) {
+            if (this.playerIsInvisible) return;
+            this.playerStunDuration = this.fakeItemBoxStunTime;
+            this.speed *= 0.7; // Minor speed reduction
+        } else {
+            if (racer.isInvisible) return;
+            racer.stunDuration = this.fakeItemBoxStunTime;
+            racer.speed *= 0.7;
+        }
+    }
+
+    // --- Boo (Ghost) Logic ---
+    useBoo(racer) {
+        const isPlayer = (racer.mesh === this.kart);
+        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used Boo!`);
+
+        if (isPlayer) {
+            this.playerIsInvisible = true;
+            this.playerInvisibilityDuration = this.booDuration;
+            this.kart.material.opacity = 0.4; // Make semi-transparent
+            this.kart.material.transparent = true;
+        } else {
+            racer.isInvisible = true;
+            racer.invisibilityDuration = this.booDuration;
+            racer.mesh.material.opacity = 0.4;
+            racer.mesh.material.transparent = true;
+        }
+        // Item Stealing Logic (simple: steal from racer in front, or random if user is 1st)
+        this.stealItemWithBoo(racer);
+    }
+    
+    stealItemWithBoo(thief) {
+        let racersToTarget = [];
+        if (thief.mesh === this.kart) { // Player is the thief
+            racersToTarget = this.bots.filter(b => b.item !== null && !b.isInvisible);
+        } else { // Bot is the thief
+            if (this.playerItem !== null && !this.playerIsInvisible) {
+                 racersToTarget.push({racerObj: this, itemHolder: 'player'}); // Target player
+            }
+            racersToTarget.push(...this.bots.filter(b => b !== thief && b.item !== null && !b.isInvisible).map(b => ({racerObj: b, itemHolder: 'bot'})));
+        }
+
+        if (racersToTarget.length > 0) {
+            // Prioritize stealing from someone ahead if possible, otherwise random
+            // This requires knowing ranks, for now, just random from available targets
+            const victimData = racersToTarget[Math.floor(this.playerRandom() * racersToTarget.length)]; // Use playerRandom for Boo item stealing event
+            let stolenItem = null;
+
+            if (victimData.itemHolder === 'player') {
+                stolenItem = this.playerItem;
+                this.playerItem = null;
+                this.updateItemDisplay(); // Victim player updates their display
+                 console.log(`Boo stole ${stolenItem} from Player!`);
+            } else { // Victim is a bot
+                stolenItem = victimData.racerObj.item;
+                victimData.racerObj.item = null;
+                 console.log(`Boo stole ${stolenItem} from Bot ${this.bots.indexOf(victimData.racerObj)}!`);
+            }
+            
+            // Give stolen item to thief
+            if (thief.mesh === this.kart) {
+                this.playerItem = stolenItem;
+                this.updateItemDisplay(); // Thief player updates their display
+            } else {
+                thief.item = stolenItem;
+            }
+        } else {
+            console.log("Boo couldn't find an item to steal!");
+        }
+    }
+
+
+    // --- Lightning Bolt Logic ---
+    useLightningBolt(firer) { // Firer is the racer who used the lightning
+        console.log(`${firer.mesh === this.kart ? 'Player' : 'Bot ' + this.bots.indexOf(firer)} used Lightning Bolt!`);
+
+        // Affect player if not the firer
+        if (firer.mesh !== this.kart) {
+            if (!this.playerIsInvisible) { // Boo immunity
+                console.log("Player struck by lightning!");
+                this.playerShrinkDuration = this.lightningShrinkDuration;
+                this.playerStunDuration = Math.max(this.playerStunDuration, this.lightningStunTime); // Apply stun
+                this.speed *= 0.4; // Reduce speed significantly
+                this.kart.scale.set(this.originalPlayerScale.x * this.lightningShrinkScaleFactor, this.originalPlayerScale.y * this.lightningShrinkScaleFactor, this.originalPlayerScale.z * this.lightningShrinkScaleFactor);
+                if (this.playerItem) { // Lose item
+                    console.log(`Player lost item: ${this.playerItem}`);
+                    this.playerItem = null;
+                    this.updateItemDisplay();
+                }
+            }
+        }
+
+        // Affect bots if not the firer
+        this.bots.forEach((bot, index) => {
+            if (firer !== bot) { // Don't affect the bot that fired it
+                if (!bot.isInvisible) { // Boo immunity
+                    console.log(`Bot ${index} struck by lightning!`);
+                    bot.shrinkDuration = this.lightningShrinkDuration;
+                    bot.stunDuration = Math.max(bot.stunDuration, this.lightningStunTime);
+                    bot.speed *= 0.4;
+                    bot.mesh.scale.set(bot.originalScale.x * this.lightningShrinkScaleFactor, bot.originalScale.y * this.lightningShrinkScaleFactor, bot.originalScale.z * this.lightningShrinkScaleFactor);
+                    if (bot.item) { // Lose item
+                        console.log(`Bot ${index} lost item: ${bot.item}`);
+                        bot.item = null;
+                    }
+                }
+            }
+        });
+    }
+
 
     // --- End Item System Logic ---
 
@@ -1590,15 +1906,37 @@ class Game {
 
         const arrivalThreshold = 3.0; // How close the bot needs to be to the *actual* checkpoint center
         const lookAheadDistance = 10.0; // How far ahead the bot looks for steering
-        const botUseItemChance = 0.01; // Small chance per frame to use item if conditions met
+        const botUseItemChance = 0.015; // Slightly increased chance
 
         this.bots.forEach((bot, botIndex) => {
-             // --- Check Stun ---
-             if (bot.stunDuration > 0) {
-                 bot.stunDuration -= deltaTime;
-                 // Bot is stunned, do nothing else for this bot this frame
-                 return;
-             }
+            // --- Handle Bot Effects (Boo, Lightning, Stun) ---
+            if (bot.isInvisible) {
+                bot.invisibilityDuration -= deltaTime;
+                if (bot.invisibilityDuration <= 0) {
+                    bot.isInvisible = false;
+                    bot.mesh.material.opacity = 1.0; // Assuming default material is not transparent
+                    // bot.mesh.material.transparent = false; // If it was set
+                }
+            }
+            if (bot.shrinkDuration > 0) {
+                bot.shrinkDuration -= deltaTime;
+                if (bot.shrinkDuration <= 0) {
+                    bot.mesh.scale.copy(bot.originalScale); // Restore scale
+                }
+            }
+            if (bot.stunDuration > 0) {
+                bot.stunDuration -= deltaTime;
+                // Bot is stunned, reduce speed significantly, limit further actions
+                bot.speed *= 0.95; // Rapidly decelerate if stunned
+                if (bot.stunDuration <= 0) { /* stun just ended */ }
+                 // If stunned, skip normal AI for this frame
+                // Move the bot based on its (rapidly decaying) speed and current rotation
+                const moveDirectionStunned = new THREE.Vector3(Math.sin(bot.mesh.rotation.y), 0, Math.cos(bot.mesh.rotation.y));
+                bot.mesh.position.addScaledVector(moveDirectionStunned, bot.speed);
+                bot.mesh.position.add(bot.impulse); // Still apply physics impulses
+                bot.impulse.multiplyScalar(bot.impulseDecay);
+                return;
+            }
 
             if (!this.checkpoints || this.checkpoints.length < 2) return; // Need at least 2 checkpoints
 
@@ -1775,7 +2113,11 @@ class Game {
             let currentMaxSpeed = bot.stats.maxSpeed;
             // Apply drift speed reduction
             if (bot.isDrifting) {
-                currentMaxSpeed *= this.driftSpeedMultiplier; // Use player's drift multiplier
+                currentMaxSpeed *= this.driftSpeedMultiplier; 
+            }
+            // Apply shrink penalty from lightning
+            if (bot.shrinkDuration > 0) {
+                currentMaxSpeed *= 0.6; // Reduced speed while shrunk
             }
             // Apply Mushroom boost (potentially overrides mini-turbo boost multiplier)
             let currentBoostMultiplier = 1.0;
@@ -1892,18 +2234,39 @@ class Game {
 
             // --- Basic Bot Item AI ---
             if (bot.item && bot.random() < botUseItemChance) {
+                const playerIsCloseBehind = this.kart.position.distanceToSquared(bot.mesh.position) < 20*20 &&
+                                         (new THREE.Vector3().subVectors(this.kart.position, bot.mesh.position)
+                                             .dot(new THREE.Vector3(0,0,1).applyQuaternion(bot.mesh.quaternion)) < 0);
+                const playerIsCloseAhead = this.kart.position.distanceToSquared(bot.mesh.position) < 25*25 &&
+                                         (new THREE.Vector3().subVectors(this.kart.position, bot.mesh.position)
+                                             .dot(new THREE.Vector3(0,0,1).applyQuaternion(bot.mesh.quaternion)) > 0);
+
                  if (bot.item === 'mushroom') {
-                     // Use mushroom if not currently turning sharply and not already boosting
                      if (Math.abs(angleDifference) < Math.PI / 8 && bot.mushroomBoostDuration <= 0) {
                          this.useItem(bot);
                      }
-                 } else if (bot.item === 'banana') {
-                     // Use banana if player is somewhat close behind (simple check)
-                     const vecBotToPlayer = this.kart.position.clone().sub(bot.mesh.position);
-                     const distSq = vecBotToPlayer.lengthSq();
-                     // Check if player is within 15 units behind the bot
-                     const botForward = new THREE.Vector3(0, 0, 1).applyQuaternion(bot.mesh.quaternion);
-                     if (distSq < 15*15 && vecBotToPlayer.dot(botForward) < 0) { // dot < 0 means player is behind
+                 } else if (bot.item === 'banana' || bot.item === 'fakeItemBox') {
+                     if (playerIsCloseBehind) { // Or other bots close behind
+                         this.useItem(bot);
+                     }
+                 } else if (bot.item === 'greenShell') {
+                     // Fire forward if player/bot ahead, backward if player/bot behind
+                     // Simple: fire forward if someone generally in front.
+                     if (playerIsCloseAhead || this.bots.some(otherBot => otherBot !== bot && bot.mesh.position.distanceToSquared(otherBot.mesh.position) < 25*25 && (new THREE.Vector3().subVectors(otherBot.mesh.position, bot.mesh.position).dot(new THREE.Vector3(0,0,1).applyQuaternion(bot.mesh.quaternion)) > 0) )) {
+                         // this.useItem(bot) // fireDirection will be mostly forward by default in useGreenShell for bots
+                         this.useItem(bot);
+                     }
+                 } else if (bot.item === 'boo') {
+                     // Use if somewhat behind or wants to steal an item
+                     const botRank = this.bots.indexOf(bot) + 1; // Crude rank among bots
+                     const playerRank = this.playerPosition;
+                     if (botRank > (this.bots.length / 2) || (this.playerItem && bot.random() < 0.5)) { // If in latter half or player has item
+                         this.useItem(bot);
+                     }
+                 } else if (bot.item === 'lightningBolt') {
+                     // Use if significantly behind
+                     const botRank = this.bots.indexOf(bot) + (this.playerPosition > this.bots.indexOf(bot) ? 0 : 1); // Very rough rank
+                     if (botRank >= this.bots.length) { // If in last place or close to it
                          this.useItem(bot);
                      }
                  }
@@ -1926,8 +2289,10 @@ class Game {
             this.updateKart(deltaTime); // Pass deltaTime to updateKart
             this.updateBots(deltaTime);
             this.checkKartCollisions();
-            this.checkItemBoxCollisions(); // Check for getting items
-            this.checkBananaCollisions(); // Check for hitting bananas
+            this.checkItemBoxCollisions(); 
+            this.checkBananaCollisions(); 
+            this.updateGreenShells(deltaTime); // Update and check shell collisions
+            this.checkFakeItemBoxCollisions(); // Check fake item box collisions
             this.checkCheckpoints();
             this.updateScoreboard();
             this.updateDriftSparks(deltaTime);
@@ -1938,6 +2303,92 @@ class Game {
 
         // Always render the scene
         this.renderer.render(this.scene, this.camera);
+    }
+
+
+    updateGreenShells(deltaTime) {
+        for (let i = this.activeGreenShells.length - 1; i >= 0; i--) {
+            const shell = this.activeGreenShells[i];
+            shell.mesh.position.addScaledVector(shell.velocity, 1); // Speed is baked into velocity here
+            shell.lifetime -= deltaTime;
+
+            // Basic wall collision/bounce (assuming rectangular boundary for simplicity)
+            // This needs to be adapted to your actual track boundaries (elliptical)
+            const trackHalfLength = this.trackLength / 2;
+            const trackHalfWidth = this.trackWidth / 2;
+
+            let bounced = false;
+            if (Math.abs(shell.mesh.position.x) > trackHalfLength -1) { // -1 for shell radius
+                shell.velocity.x *= -1;
+                shell.mesh.position.x = Math.sign(shell.mesh.position.x) * (trackHalfLength -1);
+                bounced = true;
+            }
+            if (Math.abs(shell.mesh.position.z) > trackHalfWidth -1) {
+                shell.velocity.z *= -1;
+                shell.mesh.position.z = Math.sign(shell.mesh.position.z) * (trackHalfWidth -1);
+                bounced = true;
+            }
+
+            if (bounced) {
+                shell.bouncesLeft--;
+            }
+
+            if (shell.lifetime <= 0 || shell.bouncesLeft < 0) {
+                this.scene.remove(shell.mesh);
+                this.activeGreenShells.splice(i, 1);
+                continue;
+            }
+
+            // Check collision with player
+            if (shell.owner.mesh !== this.kart && !this.playerIsInvisible) {
+                if (shell.mesh.position.distanceTo(this.kart.position) < 1.0) { // 0.6 shell radius + 0.5 kart approx
+                    this.applyGreenShellHit({ mesh: this.kart });
+                    this.scene.remove(shell.mesh);
+                    this.activeGreenShells.splice(i, 1);
+                    continue;
+                }
+            }
+
+            // Check collision with bots
+            for (let j = 0; j < this.bots.length; j++) {
+                const bot = this.bots[j];
+                if (shell.owner !== bot && !bot.isInvisible) { // Can't hit self or invisible bot
+                    if (shell.mesh.position.distanceTo(bot.mesh.position) < 1.0) {
+                        this.applyGreenShellHit(bot);
+                        this.scene.remove(shell.mesh);
+                        this.activeGreenShells.splice(i, 1);
+                        break; // Shell is gone
+                    }
+                }
+            }
+        }
+    }
+
+    checkFakeItemBoxCollisions() {
+        const playerPos = this.kart.position;
+        const kartRadius = 0.6;
+
+        for (let i = this.droppedFakeItemBoxes.length - 1; i >= 0; i--) {
+            const fakeBox = this.droppedFakeItemBoxes[i];
+            const boxPos = fakeBox.mesh.position;
+
+            if (!this.playerIsInvisible && playerPos.distanceTo(boxPos) < kartRadius + 0.9) { // 0.9 fake box radius
+                this.applyFakeItemBoxHit({ mesh: this.kart });
+                this.scene.remove(fakeBox.mesh);
+                this.droppedFakeItemBoxes.splice(i, 1);
+                continue;
+            }
+
+            for (let j = 0; j < this.bots.length; j++) {
+                 const bot = this.bots[j];
+                 if (!bot.isInvisible && bot.mesh.position.distanceTo(boxPos) < kartRadius + 0.9) {
+                     this.applyFakeItemBoxHit(bot);
+                     this.scene.remove(fakeBox.mesh);
+                     this.droppedFakeItemBoxes.splice(i, 1);
+                     break; 
+                 }
+            }
+        }
     }
 }
 
