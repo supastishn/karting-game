@@ -3558,17 +3558,22 @@ class Game {
                     }
                  } else if (bot.item === 'boo') {
                      // Use if somewhat behind or wants to steal an item
-                     const botRank = this.bots.indexOf(bot) + 1; // Crude rank among bots
-                     const playerRank = this.playerPosition;
-                     if (botRank > (this.bots.length / 2) || (this.playerItem && bot.random() < 0.5)) { // If in latter half or player has item
+                     const botRankInfo = this.getBotRankAndRacers(bot);
+                     if (botRankInfo.rank > Math.ceil(botRankInfo.sortedRacers.length / 2) || (this.playerItem && bot.random() < 0.5)) {
                          this.useItem(bot);
                      }
                  } else if (bot.item === 'lightningBolt') {
                      // Use if significantly behind
-                     const botRank = this.bots.indexOf(bot) + (this.playerPosition > this.bots.indexOf(bot) ? 0 : 1); // Very rough rank
-                     if (botRank >= this.bots.length) { // If in last place or close to it
+                     const botRankInfo = this.getBotRankAndRacers(bot);
+                     if (botRankInfo.rank >= botRankInfo.sortedRacers.length -1) { // If last or second to last
                          this.useItem(bot);
                      }
+                 } else if (bot.item === 'blueShell') {
+                    // Use if not in 1st and someone is ahead
+                    const botRankInfo = this.getBotRankAndRacers(bot);
+                    if (botRankInfo.rank > 1) { // Don't use if bot is 1st
+                        this.useItem(bot);
+                    }
                  }
             }
 
