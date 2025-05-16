@@ -2945,7 +2945,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ccButtons.forEach(button => {
         button.addEventListener('click', () => {
-            const selectedCC = button.id.split('-')[0] + 'cc'; // '50cc', '100cc', etc.
+            const selectedCC = button.id.split('-')[0]; // '50cc', '100cc', etc.
 
             // Hide CC screen
             if (ccScreen) ccScreen.classList.add('hidden');
