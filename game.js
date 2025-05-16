@@ -1185,11 +1185,14 @@ class Game {
                     const itemStolenSuccessfully = this.stealItemWithBoo(this.kart); // 'this.kart' is the racer object for player
 
                     if (itemStolenSuccessfully) {
-                        // stealItemWithBoo already put the item in this.playerItem
+                        // stealItemWithBoo already put the item in this.playerItem (stolen item)
                         console.log(`Boo stole ${this.playerItem} for Player!`);
+                        this.playerInvisibilityDuration = 0; // End invisibility due to successful steal
                     } else {
-                        this.playerItem = null; // Consume the 'boo' as steal failed
-                        console.log("Player's Boo failed to steal an item; Boo is consumed.");
+                        // Steal from another racer failed. stealItemWithBoo has given the player a 'mushroom'.
+                        // this.playerItem is already 'mushroom'. Invisibility continues for its normal duration.
+                        // The console log for receiving a mushroom is in stealItemWithBoo.
+                        console.log("Player's Boo failed to steal from another; player received a mushroom. Invisibility continues.");
                     }
                     this.playerIsAttemptingBooSteal = false;
                     this.updateItemDisplay(); // Update display with new item or empty
@@ -2431,11 +2434,14 @@ class Game {
                         const itemStolenSuccessfully = this.stealItemWithBoo(bot);
 
                         if (itemStolenSuccessfully) {
-                            // stealItemWithBoo already put the item in bot.item
+                            // stealItemWithBoo already put the item in bot.item (stolen item)
                             console.log(`Boo stole ${bot.item} for Bot ${botIndex}!`);
+                            bot.invisibilityDuration = 0; // End invisibility due to successful steal
                         } else {
-                            bot.item = null; // Consume the 'boo' as steal failed
-                            console.log(`Bot ${botIndex}'s Boo failed to steal an item; Boo is consumed.`);
+                            // Steal from another racer failed. stealItemWithBoo has given the bot a 'mushroom'.
+                            // bot.item is already 'mushroom'. Invisibility continues for its normal duration.
+                            // The console log for receiving a mushroom is in stealItemWithBoo.
+                            console.log(`Bot ${botIndex}'s Boo failed to steal from another; bot received a mushroom. Invisibility continues.`);
                         }
                         bot.isAttemptingBooSteal = false;
                     }
