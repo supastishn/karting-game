@@ -266,6 +266,33 @@ body {
     transform: scale(0.95);
 }
 
+/* Styles for CC selection (can reuse/adapt difficulty styles) */
+#cc-selection {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.85);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1900; /* Below difficulty, above game */
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+#cc-selection h1 {
+    margin-bottom: 40px;
+    font-size: 3em;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+/* .cc-button can reuse .difficulty-button styles if desired, or define separately */
+/* .cc-button {} */
+
+
 #countdown-display {
     position: fixed;
     top: 50%;

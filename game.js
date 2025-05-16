@@ -1,3 +1,11 @@
+// Speed Class Multipliers
+const CC_MULTIPLIERS = {
+    '50cc': 0.6,
+    '100cc': 0.8,
+    '150cc': 1.0,
+    '200cc': 1.2,
+};
+
 // Simple Mulberry32 PRNG
 function mulberry32(a) {
     return function() {
@@ -9,9 +17,12 @@ function mulberry32(a) {
 }
 
 class Game {
-    constructor(difficulty = 'easy') { // Accept difficulty
+    constructor(difficulty = 'easy', cc = '150cc') { // Accept difficulty and cc
         this.difficulty = difficulty; // Store difficulty
-        console.log(`Starting game with difficulty: ${this.difficulty}`);
+        this.cc = cc; // Store cc
+        console.log(`Starting game with difficulty: ${this.difficulty}, CC: ${this.cc}`);
+
+        const ccMultiplier = CC_MULTIPLIERS[this.cc] || 1.0;
 
         // --- PRNG Setup ---
         const baseSeed = Date.now();
@@ -36,10 +47,15 @@ class Game {
             rearView: false // Added for rear view
         };
         this.speed = 0;
-        this.maxSpeed = 0.5; // Decreased from 0.5
-        this.acceleration = 0.0033; // Decreased from 0.01
-        this.deceleration = 0.005;
-        this.turnSpeed = 0.015;
+        // Base speeds for 150cc
+        const baseMaxSpeed = 0.5;
+        const baseAcceleration = 0.0033;
+        const baseMaxSpeedKmh = 180;
+
+        this.maxSpeed = baseMaxSpeed * ccMultiplier;
+        this.acceleration = baseAcceleration * ccMultiplier;
+        this.deceleration = 0.005; // Deceleration might not need to scale, or scale differently
+        this.turnSpeed = 0.015; // Turn speed might also be independent of CC or scale differently
 
         // Drift and hop parameters
         this.isDrifting = false;
@@ -70,7 +86,7 @@ class Game {
 
         // Speedometer element
         this.speedDisplay = document.querySelector('.speed-value');
-        this.maxSpeedKmh = 180; // Maximum speed in km/h for display purposes
+        this.maxSpeedKmh = baseMaxSpeedKmh * ccMultiplier; // Scale display max speed
 
         // Prevent default touch behaviors - Modified to check for Eruda elements
         document.addEventListener('touchmove', (e) => {
@@ -614,30 +630,34 @@ class Game {
             const randomFactor2 = botRandom(); // Use bot's PRNG
             const randomFactor3 = botRandom(); // Use bot's PRNG
             const randomFactor4 = botRandom(); // Use bot's PRNG
+            // Bot base speeds are scaled by CC first, then difficulty applies to that scaled base
+            const botBaseMaxSpeed = this.maxSpeed; // this.maxSpeed is already CC-adjusted
+            const botBaseAcceleration = this.acceleration; // this.acceleration is already CC-adjusted
+
             switch (this.difficulty) {
                 case 'medium':
                     botStats = {
-                        maxSpeed: this.maxSpeed * (0.80 + randomFactor1 * 0.2), // 80-100%
-                        acceleration: this.acceleration * (1.0 + randomFactor2 * 0.4), // 1.0x - 1.4x
-                        turnRate: this.turnSpeed * (1.8 + randomFactor3 * 1.4), // 1.8x - 3.2x (Increased variation)
-                        targetOffset: (randomFactor4 - 0.5) * 14 // +/- 7.0 (Increased range)
+                        maxSpeed: botBaseMaxSpeed * (0.80 + randomFactor1 * 0.2), // 80-100% of CC-adjusted speed
+                        acceleration: botBaseAcceleration * (1.0 + randomFactor2 * 0.4), // 1.0x - 1.4x of CC-adjusted accel
+                        turnRate: this.turnSpeed * (1.8 + randomFactor3 * 1.4), 
+                        targetOffset: (randomFactor4 - 0.5) * 14 
                     };
                     break;
                 case 'hard':
                     botStats = {
-                        maxSpeed: this.maxSpeed * (0.90 + randomFactor1 * 0.2), // 90-110%
-                        acceleration: this.acceleration * (1.1 + randomFactor2 * 0.4), // 1.1x - 1.5x
-                        turnRate: this.turnSpeed * (2.2 + randomFactor3 * 1.6), // 2.2x - 3.8x (Increased variation)
-                        targetOffset: (randomFactor4 - 0.5) * 10 // +/- 5.0 (Increased range)
+                        maxSpeed: botBaseMaxSpeed * (0.90 + randomFactor1 * 0.2), // 90-110%
+                        acceleration: botBaseAcceleration * (1.1 + randomFactor2 * 0.4), // 1.1x - 1.5x
+                        turnRate: this.turnSpeed * (2.2 + randomFactor3 * 1.6), 
+                        targetOffset: (randomFactor4 - 0.5) * 10 
                     };
                     break;
                 case 'easy':
                 default: // Default to easy
                     botStats = {
-                        maxSpeed: this.maxSpeed * (0.65 + randomFactor1 * 0.2), // 65-85%
-                        acceleration: this.acceleration * (0.8 + randomFactor2 * 0.4),
-                        turnRate: this.turnSpeed * (1.2 + randomFactor3 * 1.6), // 1.2x - 2.8x (Increased variation)
-                        targetOffset: (randomFactor4 - 0.5) * 22 // +/- 11.0 (Increased range)
+                        maxSpeed: botBaseMaxSpeed * (0.65 + randomFactor1 * 0.2), // 65-85%
+                        acceleration: botBaseAcceleration * (0.8 + randomFactor2 * 0.4),
+                        turnRate: this.turnSpeed * (1.2 + randomFactor3 * 1.6), 
+                        targetOffset: (randomFactor4 - 0.5) * 22 
                     };
                     break;
             }
@@ -2891,41 +2911,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const speedometer = document.getElementById('speedometer');
     const raceInfo = document.querySelector('.race-info'); // Get the container
     const mobileControls = document.getElementById('mobile-controls');
-    const driftButton = document.getElementById('drift-button'); // Get drift button
-    const rearViewButton = document.getElementById('rear-view-button'); // Get rear view button
-    const difficultyButtons = document.querySelectorAll('.difficulty-button');
+    const driftButton = document.getElementById('drift-button'); 
+    const rearViewButton = document.getElementById('rear-view-button'); 
+    const difficultyButtons = document.querySelectorAll('#difficulty-selection .difficulty-button'); // Scope to difficulty
+    const ccScreen = document.getElementById('cc-selection');
+    const ccButtons = document.querySelectorAll('#cc-selection .cc-button'); // Scope to CC
 
     // Ensure race info is hidden initially if JS runs before CSS potentially
     if (raceInfo) raceInfo.classList.add('hidden');
     if (driftButton) driftButton.classList.add('hidden'); // Hide drift button initially
-    if (rearViewButton) rearViewButton.classList.add('hidden'); // Hide rear view button initially
+    if (rearViewButton) rearViewButton.classList.add('hidden'); 
+    if (ccScreen) ccScreen.classList.add('hidden'); // Ensure CC screen hidden initially
 
+    let selectedDifficulty = 'easy'; // Default difficulty
 
     difficultyButtons.forEach(button => {
         button.addEventListener('click', () => {
-            const selectedDifficulty = button.id.split('-')[0]; // 'easy', 'medium', or 'hard'
+            selectedDifficulty = button.id.split('-')[0]; // 'easy', 'medium', or 'hard'
 
-            // Hide difficulty screen
+            // Hide difficulty screen, show CC screen
             difficultyScreen.classList.add('hidden');
+            if (ccScreen) ccScreen.classList.remove('hidden');
+        });
+    });
+
+    ccButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const selectedCC = button.id.split('-')[0] + 'cc'; // '50cc', '100cc', etc.
+
+            // Hide CC screen
+            if (ccScreen) ccScreen.classList.add('hidden');
 
             // Show game elements (except countdown initially)
             gameContainer.classList.remove('hidden');
             speedometer.classList.remove('hidden');
             const raceInfo = document.querySelector('.race-info');
             if (raceInfo) raceInfo.classList.remove('hidden');
-            const itemDisplay = document.getElementById('item-display'); // Get item display
+            const itemDisplay = document.getElementById('item-display'); 
             if (itemDisplay) itemDisplay.classList.add('hidden'); // Start hidden
-            const useItemButton = document.getElementById('use-item-button'); // Get use item button
+            const useItemButton = document.getElementById('use-item-button'); 
             if (useItemButton) useItemButton.classList.add('hidden'); // Start hidden
             const countdownDisplay = document.getElementById('countdown-display');
-            if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Ensure hidden at first
+            if (countdownDisplay) countdownDisplay.classList.add('hidden'); 
             mobileControls.classList.remove('hidden');
-            if (driftButton) driftButton.classList.remove('hidden'); // Show drift button
-            if (rearViewButton) rearViewButton.classList.remove('hidden'); // Show rear view button
+            if (driftButton) driftButton.classList.remove('hidden'); 
+            if (rearViewButton) rearViewButton.classList.remove('hidden'); 
 
 
-            // Start the game (which now triggers the countdown)
-            new Game(selectedDifficulty);
+            // Start the game with selected difficulty and CC
+            new Game(selectedDifficulty, selectedCC);
         });
     });
 });
