@@ -149,7 +149,7 @@ class Game {
         this.impulseDecay = 0.85; // How quickly bump effect fades
 
         // Item System
-        this.itemTypes = ['mushroom', 'banana', 'greenShell', 'fakeItemBox', 'boo', 'lightningBolt'];
+        this.itemTypes = ['mushroom', 'banana', 'greenShell', 'redShell', 'fakeItemBox', 'boo', 'lightningBolt'];
         this.itemBoxes = [];
         this.itemBoxMeshes = []; // Store the visual meshes separately
         this.itemBoxRespawnTime = 8.0; // Seconds for item box to respawn
@@ -157,6 +157,7 @@ class Game {
         // Active Items Storage
         this.droppedBananas = []; // Store active banana objects {mesh, owner}
         this.activeGreenShells = []; // {mesh, velocity, owner, bouncesLeft, lifetime}
+        this.activeRedShells = []; // {mesh, target, owner, lifetime, speed}
         this.droppedFakeItemBoxes = []; // {mesh, owner}
 
         // Player Item State
@@ -177,6 +178,9 @@ class Game {
         this.greenShellBounces = 3;
         this.greenShellLifetime = 7.0; // seconds
         this.greenShellStunTime = 1.0;
+        this.redShellStunTime = 1.2; // Red shells might stun slightly longer
+        this.redShellSpeed = 0.25; // Red shells are a bit slower but home in
+        this.redShellLifetime = 8.0; // seconds
         this.fakeItemBoxStunTime = 0.5; // Shorter stun
         this.booDuration = 5.0;
         this.lightningShrinkDuration = 4.0;
@@ -1926,10 +1930,11 @@ class Game {
             let itemSymbol = '?';
             if (this.playerItem === 'mushroom') itemSymbol = '🍄';
             else if (this.playerItem === 'banana') itemSymbol = '🍌';
-            else if (this.playerItem === 'greenShell') itemSymbol = '🐢'; // Green shell
-            else if (this.playerItem === 'fakeItemBox') itemSymbol = '❓'; // Fake item box
-            else if (this.playerItem === 'boo') itemSymbol = '👻'; // Boo
-            else if (this.playerItem === 'lightningBolt') itemSymbol = '⚡'; // Lightning
+            else if (this.playerItem === 'greenShell') itemSymbol = '🐢';
+            else if (this.playerItem === 'redShell') itemSymbol = '🎯'; // Red shell symbol
+            else if (this.playerItem === 'fakeItemBox') itemSymbol = '❓';
+            else if (this.playerItem === 'boo') itemSymbol = '👻';
+            else if (this.playerItem === 'lightningBolt') itemSymbol = '⚡';
             this.itemNameDisplay.textContent = itemSymbol;
             this.itemDisplay.classList.remove('hidden');
             this.useItemButton.classList.remove('hidden'); // Show use button if item held
@@ -2004,11 +2009,11 @@ class Game {
             // console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 (Last Place) items.`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         } else if (rank > Math.ceil(totalRacers / 2)) { // Back half of the pack (but not 1st or last)
-            availableItems = ['mushroom', 'boo', 'fakeItemBox'];
+            availableItems = ['mushroom', 'boo', 'fakeItemBox', 'redShell']; // Added RedShell
             // console.log(`${racerUniqueId} is ${rank} (back half), gets Tier 3 items.`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         } else { // Front half of the pack (but not 1st or last)
-            availableItems = ['mushroom', 'fakeItemBox', 'greenShell'];
+            availableItems = ['mushroom', 'fakeItemBox', 'greenShell', 'redShell']; // Added RedShell
             // console.log(`${racerUniqueId} is ${rank} (front half), gets Tier 2 items.`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         }
@@ -2055,6 +2060,8 @@ class Game {
             this.useMushroom(racer);
         } else if (itemToUse === 'greenShell') {
             this.useGreenShell(racer);
+        } else if (itemToUse === 'redShell') {
+            this.useRedShell(racer);
         } else if (itemToUse === 'fakeItemBox') {
             this.useFakeItemBox(racer);
         } else if (itemToUse === 'boo') {
@@ -2130,6 +2137,30 @@ class Game {
         }
     }
 
+    applyRedShellHit(racer) {
+        const isPlayer = (racer.mesh === this.kart);
+        // console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit by a Red Shell!`);
+
+        if (isPlayer) {
+            if (this.playerIsInvisible) return; // Immune if Boo is active
+            this.playerStunDuration = this.redShellStunTime;
+            this.speed *= 0.25; // Significant speed reduction
+            this.playerMushroomBoostDuration = 0; 
+            this.boosting = false; 
+            this.isDrifting = false; 
+            this.driftActive = false;
+        } else { // Bot
+            // Ensure 'racer' is the full bot object if it's a bot
+            const botRacer = racer.isPlayer === false ? racer.botRef : racer; 
+            if (botRacer.isInvisible) return; // Immune if Boo is active
+            botRacer.stunDuration = this.redShellStunTime;
+            botRacer.speed *= 0.25;
+            botRacer.mushroomBoostDuration = 0;
+            botRacer.boosting = false;
+            botRacer.isDrifting = false;
+        }
+    }
+
     // --- Green Shell Logic ---
     useGreenShell(racer) {
         const shellGeometry = new THREE.SphereGeometry(0.6, 8, 6);
@@ -2186,6 +2217,173 @@ class Game {
             racer.mushroomBoostDuration = 0;
             racer.boosting = false;
             racer.isDrifting = false;
+        }
+    }
+
+    // --- Red Shell Logic ---
+    useRedShell(racer) {
+        const isPlayerFirer = (racer.mesh === this.kart);
+        let firerRankData;
+
+        if (isPlayerFirer) {
+            // Simplified rank finding for player - find player in sorted list
+            const allRacersSorted = this.getBotRankAndRacers(null).sortedRacers; // Pass null as bot if getting for player context
+            const playerRankIndex = allRacersSorted.findIndex(r => r.id === 'player');
+            firerRankData = { rank: playerRankIndex + 1, sortedRacers: allRacersSorted, firerObj: allRacersSorted[playerRankIndex].obj };
+        } else { // Bot is firer
+            firerRankData = this.getBotRankAndRacers(racer); // racer is the bot object
+        }
+
+        let target = null;
+        // Find the racer directly ahead of the firer who is not invisible
+        if (firerRankData.rank > 1) { // If not in 1st place
+            for (let i = firerRankData.rank - 2; i >= 0; i--) { // rank is 1-based, array is 0-based
+                const potentialTarget = firerRankData.sortedRacers[i].obj;
+                if (!potentialTarget.isInvisible) {
+                    target = potentialTarget; // Target is the racer object {mesh, lap, ...}
+                    break;
+                }
+            }
+        }
+
+        if (!target) {
+            // console.log("Red Shell: No valid target ahead or firer is in 1st. Item returned.");
+            if (isPlayerFirer) {
+                if (this.playerItem === null) { // Only give back if slot is now empty (e.g. if useItem cleared it)
+                    this.playerItem = 'redShell'; 
+                    this.updateItemDisplay();
+                }
+            } else {
+                if (racer.item === null) { // Bot racer
+                    racer.item = 'redShell';
+                }
+            }
+            return; 
+        }
+
+        // console.log(`${isPlayerFirer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} fires Red Shell at ${target.isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(target.botRef)}`);
+
+        const shellGeometry = new THREE.SphereGeometry(0.6, 8, 6);
+        const shellMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red
+        const shellMesh = new THREE.Mesh(shellGeometry, shellMaterial);
+
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(racer.mesh.quaternion);
+        const spawnPosition = racer.mesh.position.clone().addScaledVector(forward, 1.5);
+        spawnPosition.y = 0.5; // Height of shell
+
+        shellMesh.position.copy(spawnPosition);
+        this.scene.add(shellMesh);
+
+        this.activeRedShells.push({
+            mesh: shellMesh,
+            owner: racer, 
+            target: target, // Store the racer object for the target
+            lifetime: this.redShellLifetime,
+            speed: this.redShellSpeed 
+        });
+    }
+
+    updateRedShells(deltaTime) {
+        const shellRadius = 0.6;
+
+        for (let i = this.activeRedShells.length - 1; i >= 0; i--) {
+            const shell = this.activeRedShells[i];
+            shell.lifetime -= deltaTime;
+
+            // Target validation: Ensure target.mesh exists and target is not invisible
+            if (shell.lifetime <= 0 || !shell.target || !shell.target.mesh || shell.target.isInvisible) {
+                this.scene.remove(shell.mesh);
+                this.activeRedShells.splice(i, 1);
+                continue;
+            }
+            
+            const shellPos = shell.mesh.position;
+            const targetPos = shell.target.mesh.position; // Target is a racer object like {mesh: ..., ...}
+
+            // Homing logic
+            const directionToTarget = new THREE.Vector3().subVectors(targetPos, shellPos);
+            directionToTarget.y = 0; 
+            directionToTarget.normalize();
+
+            shell.mesh.lookAt(targetPos.x, shellPos.y, targetPos.z); 
+            const moveDirection = new THREE.Vector3(0,0,1).applyQuaternion(shell.mesh.quaternion);
+
+            const moveAmountVec = moveDirection.clone().multiplyScalar(shell.speed);
+            const prevPos = shellPos.clone();
+            
+            this.raycaster.set(prevPos, moveDirection);
+            this.raycaster.far = shell.speed + shellRadius;
+            const wallIntersects = this.raycaster.intersectObjects(this.wallMeshes);
+
+            if (wallIntersects.length > 0 && wallIntersects[0].distance - shellRadius < shell.speed) {
+                this.scene.remove(shell.mesh);
+                this.activeRedShells.splice(i, 1);
+                continue;
+            }
+
+            shellPos.add(moveAmountVec);
+            shellPos.y = 0.5; 
+
+            // Collision with target
+            if (shellPos.distanceTo(targetPos) < 1.0) { 
+                this.applyRedShellHit(shell.target); // Pass the racer object stored in shell.target
+                this.scene.remove(shell.mesh);
+                this.activeRedShells.splice(i, 1);
+                continue;
+            }
+
+            // Collision with other racers (not owner, not target, not invisible)
+            const allOtherRacers = [];
+            // Check player
+            if (shell.owner.mesh !== this.kart && shell.target.mesh !== this.kart && !this.playerIsInvisible) {
+                 allOtherRacers.push({mesh: this.kart, isPlayer: true, botRef: null, isInvisible: this.playerIsInvisible}); // Add player as potential victim
+            }
+            // Check bots
+            this.bots.forEach(bot => {
+                if (shell.owner !== bot && shell.target.botRef !== bot && !bot.isInvisible) { // Ensure bot itself is not the target
+                    allOtherRacers.push({mesh: bot.mesh, isPlayer: false, botRef: bot, isInvisible: bot.isInvisible}); // Add bot as potential victim
+                }
+            });
+
+            for (const otherRacer of allOtherRacers) {
+                if (shellPos.distanceTo(otherRacer.mesh.position) < 1.0) {
+                    this.applyRedShellHit(otherRacer); // Pass the simple racer object
+                    this.scene.remove(shell.mesh);
+                    this.activeRedShells.splice(i, 1);
+                    break; 
+                }
+            }
+            if (this.activeRedShells.indexOf(shell) === -1) continue;
+
+            // Collision with bananas or fake item boxes
+            const itemsToAvoid = [...this.droppedBananas, ...this.droppedFakeItemBoxes];
+            for (let k = itemsToAvoid.length - 1; k >= 0; k--) {
+                const item = itemsToAvoid[k];
+                if (shellPos.distanceTo(item.mesh.position) < 0.8) { 
+                    this.scene.remove(shell.mesh);
+                    this.activeRedShells.splice(i, 1);
+                    this.scene.remove(item.mesh); 
+                    if (this.droppedBananas.includes(item)) this.droppedBananas.splice(this.droppedBananas.indexOf(item), 1);
+                    if (this.droppedFakeItemBoxes.includes(item)) this.droppedFakeItemBoxes.splice(this.droppedFakeItemBoxes.indexOf(item), 1);
+                    break; 
+                }
+            }
+             if (this.activeRedShells.indexOf(shell) === -1) continue;
+
+
+            // Collision with green shells
+            for (let k = this.activeGreenShells.length - 1; k >= 0; k--) {
+                const greenShell = this.activeGreenShells[k];
+                if (shellPos.distanceTo(greenShell.mesh.position) < 1.2) { 
+                    this.scene.remove(shell.mesh);
+                    this.activeRedShells.splice(i, 1);
+                    this.scene.remove(greenShell.mesh); 
+                    this.activeGreenShells.splice(k, 1);
+                    break;
+                }
+            }
+             if (this.activeRedShells.indexOf(shell) === -1) continue;
+
         }
     }
 
@@ -2824,6 +3022,76 @@ class Game {
         });
     }
 
+    getBotRankAndRacers(botToRank) { // botToRank can be a bot object or null (if called for general player context)
+        // Helper to get a racer's current rank and the sorted list of all racers
+        const allRacersForRanking = [];
+        // Player
+        allRacersForRanking.push({ 
+            id: 'player', 
+            obj: { // This is the racer object structure Red Shell expects for its target
+                mesh: this.kart, 
+                lap: this.currentLap, 
+                checkpointIndex: this.lastCheckpoint === -1 ? 3 : this.lastCheckpoint, 
+                position: this.kart.position, 
+                isPlayer: true, 
+                isInvisible: this.playerIsInvisible,
+                // For applyRedShellHit, ensure it can handle this structure or simplify what's passed
+                // For now, applyRedShellHit will need to check isPlayer and access botRef if it's a bot.
+                // Let's add botRef here for consistency, null for player.
+                botRef: null 
+            }
+        });
+        // Bots
+        this.bots.forEach((bot, index) => {
+            allRacersForRanking.push({ 
+                id: `bot_${index}`, 
+                obj: { // This is the racer object structure
+                    mesh: bot.mesh, 
+                    lap: bot.lap, 
+                    checkpointIndex: bot.currentCheckpointIndex, 
+                    position: bot.mesh.position, 
+                    isPlayer: false, 
+                    isInvisible: bot.isInvisible,
+                    botRef: bot // Reference to the full bot object
+                }
+            });
+        });
+
+        allRacersForRanking.sort((a, b) => {
+            if (a.obj.lap !== b.obj.lap) return b.obj.lap - a.obj.lap;
+            const idxA = a.obj.checkpointIndex;
+            const idxB = b.obj.checkpointIndex;
+            // Corrected logic: Higher checkpoint index means further along *within the same lap*.
+            // Checkpoint 3 is start/finish. If someone is at cp 0 and another at cp 3 of *same lap*,
+            // cp 0 is further. If cp idxA = 0, idxB = 3, b is "behind" in terms of index but just finished lap.
+            // This sorting is for current race progress.
+            if (idxA !== idxB) return idxB - idxA; // Higher checkpoint index means they are "more ahead" on the current lap path.
+                                                 // This assumes checkpoints are ordered 0, 1, 2, 3 along the track.
+
+            const nextCheckpointIndexA = (a.obj.checkpointIndex + 1) % this.totalCheckpoints;
+            const nextCheckpointIndexB = (b.obj.checkpointIndex + 1) % this.totalCheckpoints;
+            const distA = this.calculateDistanceToNextCheckpoint(a.obj.position, nextCheckpointIndexA);
+            const distB = this.calculateDistanceToNextCheckpoint(b.obj.position, nextCheckpointIndexB);
+            return distA - distB; // Closer to next checkpoint is better
+        });
+        
+        let rank = -1, firerObj = null;
+        if (botToRank) { // If ranking a specific bot
+            const botIdToFind = `bot_${this.bots.indexOf(botToRank)}`;
+            const foundIndex = allRacersForRanking.findIndex(r => r.id === botIdToFind);
+            if (foundIndex !== -1) {
+                rank = foundIndex + 1; // 1-based rank
+                firerObj = allRacersForRanking[foundIndex].obj;
+            }
+        } else { // If called generally (e.g. for player context in useRedShell)
+            // rank and firerObj will be determined by the caller based on player's id.
+        }
+
+
+        return { rank: rank, sortedRacers: allRacersForRanking, firerObj: firerObj };
+    }
+
+
     animate() {
         // Keep requesting frames regardless of state to allow rendering during countdown
         requestAnimationFrame(() => this.animate());
@@ -2840,8 +3108,9 @@ class Game {
             this.checkKartCollisions();
             this.checkItemBoxCollisions(); 
             this.checkBananaCollisions(); 
-            this.updateGreenShells(deltaTime); // Update and check shell collisions
-            this.checkFakeItemBoxCollisions(); // Check fake item box collisions
+            this.updateGreenShells(deltaTime);
+            this.updateRedShells(deltaTime); // Update and check red shell collisions
+            this.checkFakeItemBoxCollisions();
             this.checkCheckpoints();
             this.updateScoreboard();
             this.updateDriftSparks(deltaTime);
