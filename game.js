@@ -2265,6 +2265,8 @@ class Game {
         const thiefIsPlayer = thief.mesh === this.kart;
         console.log(`Boo logic: Thief is ${thiefIsPlayer ? 'Player' : `Bot ${this.bots.indexOf(thief)}`}`);
 
+        // Determine which PRNG to use for target selection
+        const randomFunctionForTargetSelection = thiefIsPlayer ? this.playerRandom : thief.random;
 
         if (thief.mesh === this.kart) { // Player is the thief
             racersToTarget = this.bots.filter(b => b.item !== null && !b.isInvisible);
@@ -2291,7 +2293,8 @@ class Game {
         console.log("Boo logic: Potential targets:", targetDetails.length > 0 ? targetDetails : "None");
 
         if (racersToTarget.length > 0) {
-            const selectedTargetData = racersToTarget[Math.floor(this.playerRandom() * racersToTarget.length)];
+            // Use the determined PRNG for target selection
+            const selectedTargetData = racersToTarget[Math.floor(randomFunctionForTargetSelection() * racersToTarget.length)];
             let stolenItemValue = null; // Temporary variable to hold the item string
             let victimLogName = "Unknown";
 
