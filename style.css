@@ -147,13 +147,12 @@ body {
 }
 
 #rear-view-button {
-    position: fixed;
-    top: 220px; /* Below drift button (150px top + 70px height (approx) + 10px gap) */
-    right: 20px;
+    /* position: fixed; top: 220px; right: 20px; -- Removed for mobile controls integration */
     background: rgba(150, 150, 150, 0.5); /* Grey background */
     font-size: 28px; /* Icon size */
     color: white;
     pointer-events: auto;
+    margin-bottom: 10px; /* Consistent spacing with use-item-button */
     /* Inherits size, border-radius, display, align, justify, user-select from .control-button */
 }
 
