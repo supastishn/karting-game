@@ -2348,11 +2348,25 @@ class Game {
         }
         
         if (!itemWasStolen) {
-            // This message now correctly covers cases where no valid target was found,
-            // or (less likely due to filters) a target was selected but had no item.
-            console.log("Boo couldn't find an item to steal or the target had nothing!");
+            // No item was stolen, give a mushroom to the thief instead.
+            const mushroomItem = 'mushroom';
+            if (isThiefThePlayer) {
+                this.playerItem = mushroomItem;
+                this.updateItemDisplay(); // Thief player updates their display
+                console.log("Boo couldn't find an item to steal! Player received a mushroom instead.");
+            } else { // Bot is the thief
+                thief.item = mushroomItem;
+                console.log(`Boo couldn't find an item to steal! Bot ${this.bots.indexOf(thief)} received a mushroom instead.`);
+            }
+            // Even though no item was 'stolen' in the traditional sense,
+            // the Boo user *did* receive an item as a result of using Boo.
+            // We can return true here if we consider receiving a mushroom as a "successful" outcome for the Boo user.
+            // Or return false if "stolen" strictly means taking from another racer.
+            // For now, let's keep itemWasStolen as is, reflecting the steal attempt itself.
+            // The calling function (useBoo) will handle consuming the original 'boo' based on the original logic.
+            // The key change here is that the slot is now filled with 'mushroom' if steal fails.
         }
-        return itemWasStolen;
+        return itemWasStolen; // Returns true if an item was stolen from another racer, false otherwise.
     }
 
 
