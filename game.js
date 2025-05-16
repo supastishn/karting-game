@@ -32,7 +32,8 @@ class Game {
             backward: false,
             left: false,
             right: false,
-            drift: false
+            drift: false,
+            rearView: false // Added for rear view
         };
         this.speed = 0;
         this.maxSpeed = 0.5; // Decreased from 0.5
@@ -90,7 +91,8 @@ class Game {
         this.cameraLerpFactor = 0.1; // Adjust this value to change smoothing (0.01 to 0.1)
         this.lastKartPosition = new THREE.Vector3();
         this.cameraHeight = 5; // New parameter for camera height
-        this.cameraDistance = -8; // New parameter for camera distance
+        this.cameraDistance = -8; // New parameter for camera distance (negative for behind)
+        this.isRearViewActive = false; // State for rear view camera
 
         // Drift Sparks Particle System
         this.driftSparks = []; // Array to hold active spark data
@@ -185,6 +187,7 @@ class Game {
         this.itemDisplay = document.getElementById('item-display'); // Get item display element
         this.itemNameDisplay = document.getElementById('item-name'); // Get inner span for item name/icon
         this.useItemButton = document.getElementById('use-item-button'); // Get use item button
+        this.rearViewButton = document.getElementById('rear-view-button'); // Get rear view button
         this.updateLapCounter();
         this.updateScoreboard();
         this.updateItemDisplay(); // Initial update for item display
@@ -963,12 +966,17 @@ class Game {
             if (e.key.toLowerCase() === 'e' && !wasPressed) {
                  this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration }); // Pass player object wrapper
             }
+            // Rear view toggle with 'c' key
+            if (e.key.toLowerCase() === 'c' && !wasPressed) {
+                this.toggleRearView();
+            }
         });
         window.addEventListener('keyup', (e) => {
             this.keys[e.key.toLowerCase()] = false;
             if (e.key === ' ') {
                 this.touchControls.drift = false;
             }
+            // No keyup action needed for 'c' as it's a toggle
         });
         
         // Touch controls with improved handling
@@ -1009,7 +1017,12 @@ class Game {
         addTouchListener('left-button', 'left');
         addTouchListener('right-button', 'right');
         addTouchListener('drift-button', 'drift');
-        addTouchListener('use-item-button', 'useItem'); // Add listener for the new button
+        // addTouchListener('use-item-button', 'useItem'); // Add listener for the new button
+        // Use item already has special handling, so no need for generic addTouchListener
+
+        // Touch listener for rear view button
+        addTouchListener('rear-view-button', 'rearView');
+
 
         // Special handling for useItem touch control to call the function directly
         const useItemElement = document.getElementById('use-item-button');
@@ -1025,6 +1038,29 @@ class Game {
                  e.stopPropagation();
                  useItemElement.style.background = 'rgba(100, 100, 255, 0.5)'; // Restore background
             }, { passive: false });
+        }
+        
+        // Special handling for rearView touch control (toggle)
+        const rearViewElement = document.getElementById('rear-view-button');
+        if (rearViewElement) {
+            const rearViewTouchStart = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.toggleRearView(); // Toggle on press
+                rearViewElement.style.background = 'rgba(150, 150, 150, 0.8)'; // Darker feedback
+            };
+            const rearViewTouchEnd = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // No action on release for toggle, just restore style
+                rearViewElement.style.background = 'rgba(150, 150, 150, 0.5)';
+            };
+
+            rearViewElement.addEventListener('touchstart', rearViewTouchStart, { passive: false });
+            rearViewElement.addEventListener('touchend', rearViewTouchEnd, { passive: false }); // To restore style
+            // Mouse events for testing toggle
+            rearViewElement.addEventListener('mousedown', rearViewTouchStart);
+            rearViewElement.addEventListener('mouseup', rearViewTouchEnd);
         }
 
 
@@ -1047,6 +1083,11 @@ class Game {
         }
     }
 
+    toggleRearView() {
+        this.isRearViewActive = !this.isRearViewActive;
+        console.log("Rear view toggled:", this.isRearViewActive);
+    }
+
     updateSpeedometer() {
         // Convert speed to km/h (speed is currently in arbitrary units)
         const speedKmh = Math.abs(this.speed) * (this.maxSpeedKmh / this.maxSpeed);
@@ -1054,18 +1095,35 @@ class Game {
     }
 
     updateCamera() {
-        // Calculate ideal camera position
-        const cameraOffset = new THREE.Vector3(0, this.cameraHeight, this.cameraDistance);
-        cameraOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.kart.rotation.y);
-        this.cameraTargetPosition.copy(this.kart.position).add(cameraOffset);
+        if (!this.kart) return; // Ensure kart exists
+
+        let cameraOffset;
+        let lookAtTarget = this.kart.position.clone();
+
+        if (this.isRearViewActive) {
+            // Rear view: Camera in front, looking back at the kart
+            const frontOffsetDistance = 8; // How far in front of the kart
+            cameraOffset = new THREE.Vector3(0, this.cameraHeight, frontOffsetDistance); // Positive Z for in front
+            // Apply kart's rotation to this offset
+            cameraOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.kart.rotation.y);
+            this.cameraTargetPosition.copy(this.kart.position).add(cameraOffset);
+            // Look directly at the kart's center for rear view
+            lookAtTarget = this.kart.position.clone();
+        } else {
+            // Normal view: Camera behind, looking forward
+            cameraOffset = new THREE.Vector3(0, this.cameraHeight, this.cameraDistance); // cameraDistance is negative
+            cameraOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.kart.rotation.y);
+            this.cameraTargetPosition.copy(this.kart.position).add(cameraOffset);
+
+            // Calculate look-at position with slight prediction based on movement for normal view
+            const kartVelocity = new THREE.Vector3().copy(this.kart.position).sub(this.lastKartPosition);
+            lookAtTarget = new THREE.Vector3().copy(this.kart.position).add(kartVelocity.multiplyScalar(2));
+        }
 
         // Smooth camera position using lerp
         this.camera.position.lerp(this.cameraTargetPosition, this.cameraLerpFactor);
-
-        // Calculate look-at position with slight prediction based on movement
-        const kartVelocity = new THREE.Vector3().copy(this.kart.position).sub(this.lastKartPosition);
-        const lookAtPosition = new THREE.Vector3().copy(this.kart.position).add(kartVelocity.multiplyScalar(2));
-        this.camera.lookAt(lookAtPosition);
+        // Always look at the determined target
+        this.camera.lookAt(lookAtTarget);
     }
 
     updateKart(deltaTime) { // Accept deltaTime as an argument
@@ -2769,11 +2827,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const raceInfo = document.querySelector('.race-info'); // Get the container
     const mobileControls = document.getElementById('mobile-controls');
     const driftButton = document.getElementById('drift-button'); // Get drift button
+    const rearViewButton = document.getElementById('rear-view-button'); // Get rear view button
     const difficultyButtons = document.querySelectorAll('.difficulty-button');
 
     // Ensure race info is hidden initially if JS runs before CSS potentially
     if (raceInfo) raceInfo.classList.add('hidden');
     if (driftButton) driftButton.classList.add('hidden'); // Hide drift button initially
+    if (rearViewButton) rearViewButton.classList.add('hidden'); // Hide rear view button initially
 
 
     difficultyButtons.forEach(button => {
@@ -2796,6 +2856,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Ensure hidden at first
             mobileControls.classList.remove('hidden');
             if (driftButton) driftButton.classList.remove('hidden'); // Show drift button
+            if (rearViewButton) rearViewButton.classList.remove('hidden'); // Show rear view button
 
 
             // Start the game (which now triggers the countdown)

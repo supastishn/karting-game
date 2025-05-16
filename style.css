@@ -146,6 +146,22 @@ body {
     display: none !important;
 }
 
+#rear-view-button {
+    position: fixed;
+    top: 220px; /* Below drift button (150px top + 70px height (approx) + 10px gap) */
+    right: 20px;
+    background: rgba(150, 150, 150, 0.5); /* Grey background */
+    font-size: 28px; /* Icon size */
+    color: white;
+    pointer-events: auto;
+    /* Inherits size, border-radius, display, align, justify, user-select from .control-button */
+}
+
+#rear-view-button.hidden {
+    display: none !important;
+}
+
+
 /* Removed .spark-indicator styles */
 
 .lap-counter {
