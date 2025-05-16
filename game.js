@@ -149,7 +149,7 @@ class Game {
         this.impulseDecay = 0.85; // How quickly bump effect fades
 
         // Item System
-        this.itemTypes = ['mushroom', 'banana', 'greenShell', 'redShell', 'fakeItemBox', 'boo', 'lightningBolt'];
+        this.itemTypes = ['mushroom', 'banana', 'greenShell', 'redShell', 'fakeItemBox', 'boo', 'lightningBolt', 'blueShell'];
         this.itemBoxes = [];
         this.itemBoxMeshes = []; // Store the visual meshes separately
         this.itemBoxRespawnTime = 8.0; // Seconds for item box to respawn
@@ -158,6 +158,7 @@ class Game {
         this.droppedBananas = []; // Store active banana objects {mesh, owner}
         this.activeGreenShells = []; // {mesh, velocity, owner, bouncesLeft, lifetime}
         this.activeRedShells = []; // {mesh, target, owner, lifetime, speed}
+        this.activeBlueShells = []; // {mesh, targetRacer, owner, lifetime, speed, heightOffset}
         this.droppedFakeItemBoxes = []; // {mesh, owner}
 
         // Player Item State
@@ -169,6 +170,8 @@ class Game {
         this.playerIsAttemptingBooSteal = false; // For Boo steal attempt after invisibility
         this.playerShrinkDuration = 0; // For Lightning
         this.originalPlayerScale = new THREE.Vector3(1, 1, 1); // Store original scale
+        this.playerIsSpinningOut = false; // For Blue Shell hit
+        this.playerSpinOutTimer = 0;    // For Blue Shell hit
 
         // Item Trailing State
         this.isItemButtonPressed = false; // Generic flag for item button being down (UI or key)
@@ -195,6 +198,13 @@ class Game {
         this.lightningShrinkDuration = 4.0;
         this.lightningShrinkScaleFactor = 0.5;
         this.lightningStunTime = 0.8; // Initial stun when hit by lightning
+        this.blueShellSpeed = 0.25; // Speed for Blue Shell flight
+        this.blueShellLifetime = 15.0; // Max time a Blue Shell stays active
+        this.blueShellExplosionRadius = 10.0; // Radius of Blue Shell explosion
+        this.blueShellStunTime = 3.0; // Stun duration from Blue Shell
+        this.blueShellSpinOutDuration = 2.0; // How long player spins
+        this.blueShellSpinSpeed = Math.PI * 5; // Rotation speed during spin-out (radians/sec)
+
 
         // Lap counting system
         this.currentLap = 1;
@@ -715,7 +725,9 @@ class Game {
                 invisibilityDuration: 0,
                 isAttemptingBooSteal: false, // For Boo steal attempt after invisibility
                 shrinkDuration: 0,
-                originalScale: new THREE.Vector3(1, 1, 1) // Store original scale for each bot
+                originalScale: new THREE.Vector3(1, 1, 1), // Store original scale for each bot
+                isSpinningOut: false, // For Blue Shell hit
+                spinOutTimer: 0       // For Blue Shell hit
             });
         }
         // Store original scale for player kart
@@ -1284,6 +1296,20 @@ class Game {
             this.updateCamera();
             this.updateSpeedometer(); // Keep speedometer at 0
             return;
+        }
+
+        // --- Handle Player Spin-out (Blue Shell) ---
+        if (this.playerIsSpinningOut) {
+            this.playerSpinOutTimer -= deltaTime;
+            this.kart.rotation.y += this.blueShellSpinSpeed * deltaTime;
+            if (this.playerSpinOutTimer <= 0) {
+                this.playerIsSpinningOut = false;
+            }
+            // Keep camera and speed updated, but skip other controls/physics
+            this.speed = 0; // Ensure speed remains 0
+            this.updateCamera();
+            this.updateSpeedometer();
+            return; // Skip normal kart updates while spinning out
         }
 
         // --- Handle Player Effects (Boo, Lightning, Stun) ---
@@ -2048,6 +2074,7 @@ class Game {
             else if (itemToShow === 'fakeItemBox') itemSymbol = '❓';
             else if (itemToShow === 'boo') itemSymbol = '👻';
             else if (itemToShow === 'lightningBolt') itemSymbol = '⚡';
+            else if (itemToShow === 'blueShell') itemSymbol = '🌀'; // Blue Shell icon
             
             this.itemNameDisplay.textContent = itemSymbol;
             this.itemDisplay.classList.remove('hidden');
@@ -2256,12 +2283,18 @@ class Game {
             // console.log(`${racerUniqueId} is ${rank} (front half), gets Tier 2 items.`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         }
+
+        // Blue Shell specific logic: only for those not in 1st, and more likely for last places
+        if (rank > 1 && rank >= Math.floor(totalRacers * 0.6) && randomFunction() < 0.3) { // e.g. 30% chance if in bottom 40%
+            // console.log(`${racerUniqueId} is ${rank}, eligible for Blue Shell.`);
+            chosenItem = 'blueShell';
+        }
         
         // Fallback if chosenItem somehow didn't get set (e.g., an item tier list was empty or logic error)
         if (!chosenItem) {
             // This case should ideally not be hit if all tiers are defined and rank logic is correct.
             // It would apply if, for example, rank 1 logic failed to set chosenItem.
-            console.warn(`ChosenItem was not set for rank ${rank}. Defaulting to mushroom.`);
+            console.warn(`ChosenItem was not set for rank ${rank} (total: ${totalRacers}). Defaulting to mushroom.`);
             chosenItem = 'mushroom';
         }
 
@@ -2307,10 +2340,12 @@ class Game {
             this.useBoo(racer);
         } else if (itemToUse === 'lightningBolt') {
             this.useLightningBolt(racer); // Pass the user
+        } else if (itemToUse === 'blueShell') {
+            this.useBlueShell(racer);
         }
 
-        // Clear the item after use, unless it's Boo, which handles its own slot.
-        if (itemToUse !== 'boo') {
+        // Clear the item after use, unless it's Boo or Blue Shell (which also doesn't get cleared immediately by this logic, useBlueShell handles it)
+        if (itemToUse !== 'boo' && itemToUse !== 'blueShell') {
             if (isPlayer) {
                 this.playerItem = null;
             } else { // It's a bot
@@ -2882,16 +2917,249 @@ class Game {
 
     // --- End Item System Logic ---
 
+    // --- Blue Shell Logic ---
+    useBlueShell(firer) {
+        const isPlayerFirer = (firer.mesh === this.kart);
+        console.log(`${isPlayerFirer ? 'Player' : 'Bot ' + this.bots.indexOf(firer)} used Blue Shell!`);
+
+        const rankData = this.getBotRankAndRacers(isPlayerFirer ? null : firer); // Pass firer if bot, null if player
+        let targetRacer = null;
+
+        // Find the 1st place racer who is not invisible
+        for (let i = 0; i < rankData.sortedRacers.length; i++) {
+            if (!rankData.sortedRacers[i].obj.isInvisible) {
+                targetRacer = rankData.sortedRacers[i].obj; // This is the racer object {mesh, lap, ...}
+                break;
+            }
+        }
+        
+        if (!targetRacer) {
+            console.log("Blue Shell: No valid 1st place target found (e.g., everyone invisible or race just started). Item fizzles.");
+            // Clear item from firer
+            if (isPlayerFirer) {
+                this.playerItem = null;
+                this.updateItemDisplay();
+            } else {
+                firer.item = null;
+            }
+            return;
+        }
+        
+        // If the firer is somehow the only valid target (e.g. in 1st and all others invisible)
+        // Let it target self to avoid complex edge cases for now. Typically Blue Shell doesn't hit firer unless they are 1st.
+        // if (targetRacer.mesh === firer.mesh) {
+        //     console.log("Blue Shell: Firer is 1st place. Targeting self or nearest non-1st if that logic was added.");
+        // }
+
+
+        const shellGeometry = new THREE.SphereGeometry(0.7, 10, 8); // Slightly larger, spiky-ish look
+        // Add "wings" or spikes (simplified)
+        const wingMat = new THREE.MeshBasicMaterial({ color: 0x66aaff });
+        for (let i = 0; i < 4; i++) {
+            const wingGeo = new THREE.ConeGeometry(0.3, 0.8, 4);
+            const wing = new THREE.Mesh(wingGeo, wingMat);
+            const angle = (Math.PI / 2) * i;
+            wing.position.set(Math.cos(angle) * 0.6, 0, Math.sin(angle) * 0.6);
+            wing.lookAt(new THREE.Vector3(Math.cos(angle) * 1.5, 0.2, Math.sin(angle) * 1.5));
+            wing.rotateX(Math.PI / 2); // Adjust orientation
+            shellGeometry.mergeMesh(wing);
+        }
+        shellGeometry.computeBoundingSphere();
+
+
+        const shellMaterial = new THREE.MeshPhongMaterial({ color: 0x0055ff, emissive: 0x002288, shininess: 50 });
+        const shellMesh = new THREE.Mesh(shellGeometry, shellMaterial);
+
+        // Initial position: above the firer
+        const spawnPosition = firer.mesh.position.clone();
+        spawnPosition.y += 5; // Start higher up
+        shellMesh.position.copy(spawnPosition);
+        this.scene.add(shellMesh);
+
+        this.activeBlueShells.push({
+            mesh: shellMesh,
+            targetRacer: targetRacer, // Store the racer object itself
+            owner: firer,
+            lifetime: this.blueShellLifetime,
+            speed: this.blueShellSpeed,
+            heightOffset: 5.0, // Initial height offset, will smoothly decrease
+            state: 'flying_high' // Initial state: 'flying_high', 'homing', 'diving'
+        });
+
+        // Clear item from firer
+        if (isPlayerFirer) {
+            this.playerItem = null;
+            this.updateItemDisplay();
+        } else {
+            firer.item = null;
+        }
+    }
+
+    updateBlueShells(deltaTime) {
+        for (let i = this.activeBlueShells.length - 1; i >= 0; i--) {
+            const shell = this.activeBlueShells[i];
+            shell.lifetime -= deltaTime;
+
+            // Target validation: Ensure target is still valid (exists, has mesh, not invisible for final dive)
+            let targetPosition;
+            if (shell.targetRacer && shell.targetRacer.mesh) {
+                targetPosition = shell.targetRacer.mesh.position.clone();
+            } else { // Target became invalid (e.g. disconnected, rare)
+                shell.lifetime = 0; // Force explosion or despawn
+            }
+
+            if (shell.lifetime <= 0) {
+                this.scene.remove(shell.mesh);
+                if(shell.mesh.geometry) shell.mesh.geometry.dispose();
+                if(shell.mesh.material) shell.mesh.material.dispose();
+                this.activeBlueShells.splice(i, 1);
+                // Optionally trigger a generic explosion here if it didn't hit
+                continue;
+            }
+
+            const shellPos = shell.mesh.position;
+            
+            // State-based movement
+            if (shell.state === 'flying_high') {
+                // Fly somewhat towards general area of target, maintaining height
+                const directionToTargetXZ = new THREE.Vector3(targetPosition.x - shellPos.x, 0, targetPosition.z - shellPos.z).normalize();
+                shellPos.addScaledVector(directionToTargetXZ, shell.speed * 20 * deltaTime); // Faster initial travel
+                shellPos.y = targetPosition.y + shell.heightOffset; // Maintain height based on target's Y + offset
+                shell.mesh.lookAt(new THREE.Vector3(targetPosition.x, shellPos.y, targetPosition.z));
+
+                if (shellPos.distanceTo(new THREE.Vector3(targetPosition.x, shellPos.y, targetPosition.z)) < 20) { // Close enough to start homing
+                    shell.state = 'homing';
+                    // console.log("Blue Shell: State -> homing");
+                }
+
+            } else if (shell.state === 'homing') {
+                // Home in on target, gradually reduce height offset
+                const directionToTarget = new THREE.Vector3().subVectors(targetPosition, shellPos).normalize();
+                shellPos.addScaledVector(directionToTarget, shell.speed * 25 * deltaTime); // Normal homing speed
+                shell.heightOffset = Math.max(1.5, shell.heightOffset - 2.0 * deltaTime); // Decrease height offset
+                shellPos.y = targetPosition.y + shell.heightOffset;
+                shell.mesh.lookAt(targetPosition);
+
+
+                // Check for proximity to dive (or if target is invisible, explode sooner)
+                if (shellPos.distanceTo(targetPosition) < 3.0 || (shell.targetRacer.isInvisible && shellPos.distanceTo(targetPosition) < 10.0) ) {
+                    shell.state = 'diving'; // Prepare to explode
+                    // console.log("Blue Shell: State -> diving (explosion imminent)");
+                }
+            }
+            
+            // If diving or close enough, trigger explosion (common check after state logic)
+            // The 'diving' state is more of a pre-explosion state.
+            if (shell.state === 'diving' || shellPos.distanceTo(targetPosition) < 1.5) {
+                 // console.log("Blue Shell explodes!");
+                // Create visual explosion (placeholder)
+                const explosionEffect = new THREE.Mesh(
+                    new THREE.SphereGeometry(this.blueShellExplosionRadius * 0.5, 16, 8),
+                    new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.7 })
+                );
+                explosionEffect.position.copy(shellPos); // Explode where shell is
+                explosionEffect.position.y = Math.max(1.0, shellPos.y); // Ensure explosion is not underground
+                this.scene.add(explosionEffect);
+                setTimeout(() => { 
+                    this.scene.remove(explosionEffect); 
+                    if(explosionEffect.geometry) explosionEffect.geometry.dispose();
+                    if(explosionEffect.material) explosionEffect.material.dispose();
+                }, 700);
+
+
+                // Affect racers in radius
+                const explosionCenter = shellPos.clone();
+
+                // Affect target directly (if still valid)
+                if (shell.targetRacer && shell.targetRacer.mesh) {
+                     this.applyBlueShellHit(shell.targetRacer);
+                }
+
+                // Affect player if not the primary target but in radius
+                if (this.kart !== shell.targetRacer.mesh && this.kart.position.distanceTo(explosionCenter) < this.blueShellExplosionRadius) {
+                    this.applyBlueShellHit({ mesh: this.kart, isPlayer: true, botRef: null, isInvisible: this.playerIsInvisible});
+                }
+
+                // Affect bots if not primary target but in radius
+                this.bots.forEach(bot => {
+                    if (bot.mesh !== shell.targetRacer.mesh && bot.mesh.position.distanceTo(explosionCenter) < this.blueShellExplosionRadius) {
+                        this.applyBlueShellHit(bot); // Pass bot object
+                    }
+                });
+
+                this.scene.remove(shell.mesh);
+                if(shell.mesh.geometry) shell.mesh.geometry.dispose();
+                if(shell.mesh.material) shell.mesh.material.dispose();
+                this.activeBlueShells.splice(i, 1);
+                continue;
+            }
+        }
+    }
+
+    applyBlueShellHit(racerContext) { // racerContext is {mesh, isPlayer, botRef, isInvisible} or a bot object
+        let isPlayerHit, actualRacerObject;
+
+        if (racerContext.isPlayer !== undefined) { // It's a player-like context object
+            isPlayerHit = racerContext.isPlayer;
+            actualRacerObject = isPlayerHit ? this : racerContext.botRef; // this (game) for player, botRef for bot
+        } else { // It's a direct bot object
+            isPlayerHit = false;
+            actualRacerObject = racerContext;
+        }
+        
+        if (actualRacerObject.isInvisible) return; // Immune if Boo is active or general invisibility
+
+        // console.log(`${isPlayerHit ? 'Player' : 'Bot'} hit by Blue Shell explosion!`);
+
+        if (isPlayerHit) {
+            this.playerStunDuration = this.blueShellStunTime;
+            this.speed = 0;
+            this.playerMushroomBoostDuration = 0;
+            this.boosting = false;
+            this.isDrifting = false;
+            this.driftActive = false;
+            this.playerIsSpinningOut = true;
+            this.playerSpinOutTimer = this.blueShellSpinOutDuration;
+            this.impulse.set(0,0,0); // Clear any existing bump impulse
+        } else { // Bot
+            actualRacerObject.stunDuration = this.blueShellStunTime;
+            actualRacerObject.speed = 0;
+            actualRacerObject.mushroomBoostDuration = 0;
+            actualRacerObject.boosting = false;
+            actualRacerObject.isDrifting = false;
+            // No driftActive for bots directly, but behavior implied by isDrifting=false
+            actualRacerObject.isSpinningOut = true;
+            actualRacerObject.spinOutTimer = this.blueShellSpinOutDuration;
+            actualRacerObject.impulse.set(0,0,0);
+        }
+    }
+
 
     updateBots(deltaTime) { // Accept deltaTime
         // Only allow updates if the race is active
         if (this.gameState !== 'racing') return;
 
         const arrivalThreshold = 3.0; // How close the bot needs to be to the *actual* checkpoint center
-        const lookAheadDistance = 10.0; // How far ahead the bot looks for steering
+        // const lookAheadDistance = 10.0; // How far ahead the bot looks for steering - now dynamic
         const botUseItemChance = 0.015; // Slightly increased chance
 
         this.bots.forEach((bot, botIndex) => {
+            // --- Handle Bot Spin-out (Blue Shell) ---
+            if (bot.isSpinningOut) {
+                bot.spinOutTimer -= deltaTime;
+                bot.mesh.rotation.y += this.blueShellSpinSpeed * deltaTime; // Use game's spin speed
+                if (bot.spinOutTimer <= 0) {
+                    bot.isSpinningOut = false;
+                }
+                bot.speed = 0; // Ensure speed remains 0
+                // Bot doesn't have its own camera or speedometer to update here
+                // Just apply physics impulses if any
+                bot.mesh.position.add(bot.impulse);
+                bot.impulse.multiplyScalar(bot.impulseDecay);
+                if (bot.impulse.lengthSq() < 0.0001) bot.impulse.set(0,0,0);
+                return; // Skip normal bot AI while spinning out
+            }
+
             // --- Handle Bot Effects (Boo, Lightning, Stun) ---
             if (bot.isInvisible) { // Handles Boo invisibility primarily
                 bot.invisibilityDuration -= deltaTime;
@@ -3394,7 +3662,8 @@ class Game {
             this.checkItemBoxCollisions(); 
             this.checkBananaCollisions(); 
             this.updateGreenShells(deltaTime);
-            this.updateRedShells(deltaTime); // Update and check red shell collisions
+            this.updateRedShells(deltaTime); 
+            this.updateBlueShells(deltaTime); // Update Blue Shells
             this.checkFakeItemBoxCollisions();
             this.checkCheckpoints();
             this.updateScoreboard();
