@@ -170,6 +170,14 @@ class Game {
         this.playerPosition = 1; // Initialize player position
         this.frameCount = 0; // Frame counter for throttling logs
 
+        // Wall properties
+        this.wallMeshes = [];
+        this.raycaster = new THREE.Raycaster();
+        this.WALL_HEIGHT = 3.0;
+        this.WALL_THICKNESS = 1.0; // Increased thickness for better visibility/collision
+        this.WALL_MATERIAL = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8, metalness: 0.2 });
+
+
         // UI Elements
         this.lapDisplay = document.querySelector('.lap-counter');
         this.positionDisplay = document.querySelector('.position-display');
@@ -217,7 +225,7 @@ class Game {
         this.ground.rotation.x = Math.PI / 2;
         this.scene.add(this.ground);
 
-        // Create race track
+        // Create race track (which now also creates walls)
         this.createRaceTrack();
 
         // Create kart (simple box) in purple
@@ -538,7 +546,67 @@ class Game {
         this.createCheckpoints();
         // Create the racing line path
         this.createRacingLine();
+        // Create Walls
+        this.createTrackWalls();
     }
+
+    createWallSegmentMesh(p1, p2, height, thickness, material) {
+        const diff = new THREE.Vector3().subVectors(p2, p1);
+        const length = diff.length();
+        // Calculate midpoint for positioning, base of wall is on track (y=0.1)
+        const midPoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+    
+        const wallGeometry = new THREE.BoxGeometry(length, height, thickness);
+        const wallMesh = new THREE.Mesh(wallGeometry, material);
+    
+        // Position the wall segment
+        // The BoxGeometry's origin is its center. Walls sit on track surface (y=0.1).
+        wallMesh.position.set(midPoint.x, 0.1 + height / 2, midPoint.z);
+    
+        // Orient the wall segment
+        // The length of the BoxGeometry is along its local X-axis.
+        // We want to rotate it in the XZ plane (around Y) to align with the segment from p1 to p2.
+        wallMesh.rotation.y = Math.atan2(diff.x, diff.z);
+    
+        return wallMesh;
+    }
+
+    createTrackWalls() {
+        const segments = 32; // Same number of segments as track shape for smoothness
+
+        // Outer Wall
+        const outerWallPoints = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = (i / segments) * Math.PI * 2;
+            const x = Math.cos(t) * this.trackLength / 2;
+            const z = Math.sin(t) * this.trackWidth / 2;
+            outerWallPoints.push(new THREE.Vector3(x, 0, z)); // Y is 0 relative to wall base
+        }
+        for (let i = 0; i < segments; i++) {
+            const p1 = outerWallPoints[i];
+            const p2 = outerWallPoints[i+1];
+            const wallSegment = this.createWallSegmentMesh(p1, p2, this.WALL_HEIGHT, this.WALL_THICKNESS, this.WALL_MATERIAL);
+            this.scene.add(wallSegment);
+            this.wallMeshes.push(wallSegment);
+        }
+
+        // Inner Wall
+        const innerWallPoints = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = (i / segments) * Math.PI * 2;
+            const x = Math.cos(t) * this.trackLengthInner / 2;
+            const z = Math.sin(t) * this.trackWidthInner / 2;
+            innerWallPoints.push(new THREE.Vector3(x, 0, z));
+        }
+        for (let i = 0; i < segments; i++) {
+            const p1 = innerWallPoints[i];
+            const p2 = innerWallPoints[i+1];
+            const wallSegment = this.createWallSegmentMesh(p1, p2, this.WALL_HEIGHT, this.WALL_THICKNESS, this.WALL_MATERIAL);
+            this.scene.add(wallSegment);
+            this.wallMeshes.push(wallSegment);
+        }
+    }
+
 
     // New function to calculate points along the track centerline
     createRacingLine(numPoints = 100) {
@@ -2384,34 +2452,57 @@ class Game {
 
 
     updateGreenShells(deltaTime) {
+        const shellRadius = 0.6; // Matches shell geometry radius
+
         for (let i = this.activeGreenShells.length - 1; i >= 0; i--) {
             const shell = this.activeGreenShells[i];
-            shell.mesh.position.addScaledVector(shell.velocity, 1); // Speed is baked into velocity here
-            shell.lifetime -= deltaTime;
+            const prevPos = shell.mesh.position.clone();
+            const moveAmountVec = shell.velocity.clone(); // Velocity is units per frame
+            const moveDistance = moveAmountVec.length();
 
-            // Basic wall collision/bounce (assuming rectangular boundary for simplicity)
-            // This needs to be adapted to your actual track boundaries (elliptical)
-            const trackHalfLength = this.trackLength / 2;
-            const trackHalfWidth = this.trackWidth / 2;
+            shell.lifetime -= deltaTime; // Decrement lifetime regardless of movement
 
-            let bounced = false;
-            if (Math.abs(shell.mesh.position.x) > trackHalfLength -1) { // -1 for shell radius
-                shell.velocity.x *= -1;
-                shell.mesh.position.x = Math.sign(shell.mesh.position.x) * (trackHalfLength -1);
-                bounced = true;
-            }
-            if (Math.abs(shell.mesh.position.z) > trackHalfWidth -1) {
-                shell.velocity.z *= -1;
-                shell.mesh.position.z = Math.sign(shell.mesh.position.z) * (trackHalfWidth -1);
-                bounced = true;
-            }
+            if (moveDistance > 0) {
+                const moveDirection = moveAmountVec.clone().normalize();
+                this.raycaster.set(prevPos, moveDirection);
+                // Raycast just far enough to detect collision for the sphere's surface this frame
+                this.raycaster.far = moveDistance + shellRadius; 
 
-            if (bounced) {
-                shell.bouncesLeft--;
+                const intersects = this.raycaster.intersectObjects(this.wallMeshes);
+                let collisionOccurredThisFrame = false;
+
+                if (intersects.length > 0) {
+                    const collision = intersects[0];
+                    // Check if the collision point (for the sphere's surface) is within this frame's travel
+                    if (collision.distance - shellRadius < moveDistance) {
+                        collisionOccurredThisFrame = true;
+                        
+                        // Position shell at the point of impact
+                        shell.mesh.position.copy(collision.point);
+                        
+                        const worldNormal = collision.face.normal.clone();
+                        worldNormal.transformDirection(collision.object.matrixWorld); // Transform normal to world space
+                        
+                        // Reflect velocity
+                        shell.velocity.reflect(worldNormal);
+                        
+                        // Move shell slightly away from wall along the normal to prevent sinking
+                        shell.mesh.position.addScaledVector(worldNormal, 0.01); 
+
+                        shell.bouncesLeft--;
+                    }
+                }
+
+                if (!collisionOccurredThisFrame) {
+                    // No collision, move normally
+                    shell.mesh.position.add(moveAmountVec);
+                }
             }
 
             if (shell.lifetime <= 0 || shell.bouncesLeft < 0) {
                 this.scene.remove(shell.mesh);
+                shell.mesh.geometry.dispose(); // Dispose geometry
+                // If material is shared, don't dispose, otherwise shell.mesh.material.dispose();
                 this.activeGreenShells.splice(i, 1);
                 continue;
             }
