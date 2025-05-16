@@ -2951,33 +2951,48 @@ class Game {
         //     console.log("Blue Shell: Firer is 1st place. Targeting self or nearest non-1st if that logic was added.");
         // }
 
+        const blueShellGroup = new THREE.Group();
 
-        const shellGeometry = new THREE.SphereGeometry(0.7, 10, 8); // Slightly larger, spiky-ish look
+        // Main sphere part of the Blue Shell
+        const shellCoreGeometry = new THREE.SphereGeometry(0.7, 10, 8);
+        const shellCoreMaterial = new THREE.MeshPhongMaterial({ color: 0x0055ff, emissive: 0x002288, shininess: 50 });
+        const shellCoreMesh = new THREE.Mesh(shellCoreGeometry, shellCoreMaterial);
+        blueShellGroup.add(shellCoreMesh); // Add core to the group
+
         // Add "wings" or spikes (simplified)
-        const wingMat = new THREE.MeshBasicMaterial({ color: 0x66aaff });
+        const wingMaterial = new THREE.MeshBasicMaterial({ color: 0x66aaff }); // Shared material for wings
         for (let i = 0; i < 4; i++) {
             const wingGeo = new THREE.ConeGeometry(0.3, 0.8, 4);
-            const wing = new THREE.Mesh(wingGeo, wingMat);
+            const wingMesh = new THREE.Mesh(wingGeo, wingMaterial);
             const angle = (Math.PI / 2) * i;
-            wing.position.set(Math.cos(angle) * 0.6, 0, Math.sin(angle) * 0.6);
-            wing.lookAt(new THREE.Vector3(Math.cos(angle) * 1.5, 0.2, Math.sin(angle) * 1.5));
-            wing.rotateX(Math.PI / 2); // Adjust orientation
-            shellGeometry.mergeMesh(wing);
+            
+            // Position and orient wings relative to the group's center (0,0,0)
+            wingMesh.position.set(Math.cos(angle) * 0.6, 0, Math.sin(angle) * 0.6);
+            
+            // To make cones point outwards and slightly up:
+            // 1. Create a target point outwards from the center
+            const lookAtTarget = new THREE.Vector3(Math.cos(angle) * 1.5, 0.2, Math.sin(angle) * 1.5);
+            // 2. Point the cone towards this target. Cones point along their +Y axis by default.
+            //    We need to align their local Y with the direction from cone's position to lookAtTarget.
+            //    A simpler way for cones is to position them and then rotate.
+            //    Let's set rotation to make them point outwards from the Y-axis.
+            wingMesh.rotation.z = -Math.PI / 2; // Makes cone point along its local X-axis
+            wingMesh.rotation.y = angle + Math.PI /2; // Rotate around Y to point outwards radially
+                                                 // Add PI/2 because cones point along Y, but we want them to point along their "side" after first rotation.
+            // Adjust wing rotation for a more spiky look (optional)
+            wingMesh.rotateOnAxis(new THREE.Vector3(1,0,0), Math.PI / 6); // Tilt slightly upwards
+
+            blueShellGroup.add(wingMesh);
         }
-        shellGeometry.computeBoundingSphere();
-
-
-        const shellMaterial = new THREE.MeshPhongMaterial({ color: 0x0055ff, emissive: 0x002288, shininess: 50 });
-        const shellMesh = new THREE.Mesh(shellGeometry, shellMaterial);
 
         // Initial position: above the firer
         const spawnPosition = firer.mesh.position.clone();
         spawnPosition.y += 5; // Start higher up
-        shellMesh.position.copy(spawnPosition);
-        this.scene.add(shellMesh);
+        blueShellGroup.position.copy(spawnPosition);
+        this.scene.add(blueShellGroup);
 
         this.activeBlueShells.push({
-            mesh: shellMesh,
+            mesh: blueShellGroup, // Store the group
             targetRacer: targetRacer, // Store the racer object itself
             owner: firer,
             lifetime: this.blueShellLifetime,
@@ -3009,15 +3024,23 @@ class Game {
             }
 
             if (shell.lifetime <= 0) {
-                this.scene.remove(shell.mesh);
-                if(shell.mesh.geometry) shell.mesh.geometry.dispose();
-                if(shell.mesh.material) shell.mesh.material.dispose();
+                this.scene.remove(shell.mesh); // shell.mesh is the THREE.Group
+                shell.mesh.traverse(child => {
+                    if (child.isMesh) {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) {
+                            // If material has a texture map that needs disposal
+                            if (child.material.map && child.material.map.dispose) child.material.map.dispose();
+                            child.material.dispose();
+                        }
+                    }
+                });
                 this.activeBlueShells.splice(i, 1);
                 // Optionally trigger a generic explosion here if it didn't hit
                 continue;
             }
 
-            const shellPos = shell.mesh.position;
+            const shellPos = shell.mesh.position; // Position of the group
             
             // State-based movement
             if (shell.state === 'flying_high') {
@@ -3087,9 +3110,17 @@ class Game {
                     }
                 });
 
-                this.scene.remove(shell.mesh);
-                if(shell.mesh.geometry) shell.mesh.geometry.dispose();
-                if(shell.mesh.material) shell.mesh.material.dispose();
+                this.scene.remove(shell.mesh); // shell.mesh is the THREE.Group
+                shell.mesh.traverse(child => {
+                    if (child.isMesh) {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) {
+                            // If material has a texture map that needs disposal
+                            if (child.material.map && child.material.map.dispose) child.material.map.dispose();
+                            child.material.dispose();
+                        }
+                    }
+                });
                 this.activeBlueShells.splice(i, 1);
                 continue;
             }
