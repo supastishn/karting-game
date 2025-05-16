@@ -2041,12 +2041,18 @@ class Game {
             this.useLightningBolt(racer); // Pass the user
         }
 
-        // Clear the item after use
+        // Clear the item after use, unless it's Boo, which handles its own slot.
+        if (itemToUse !== 'boo') {
+            if (isPlayer) {
+                this.playerItem = null;
+            } else { // It's a bot
+                racer.item = null;
+            }
+        }
+
+        // Always update display for player after any item use attempt
         if (isPlayer) {
-            this.playerItem = null;
             this.updateItemDisplay();
-        } else {
-            racer.item = null;
         }
     }
 
@@ -2206,10 +2212,10 @@ class Game {
 
     // --- Boo (Ghost) Logic ---
     useBoo(racer) {
-        const isPlayer = (racer.mesh === this.kart);
-        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used Boo!`); // KEEP THIS LOG
+        const isPlayerBooUser = (racer.mesh === this.kart); // Renamed for clarity
+        console.log(`${isPlayerBooUser ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used Boo!`); // KEEP THIS LOG
 
-        if (isPlayer) {
+        if (isPlayerBooUser) {
             this.playerIsInvisible = true;
             this.playerInvisibilityDuration = this.booDuration;
             this.kart.traverse(child => {
@@ -2228,19 +2234,32 @@ class Game {
                 }
             });
         }
-        // Item Stealing Logic
-        const itemStolen = this.stealItemWithBoo(racer);
 
-        if (itemStolen) {
-            // If an item was stolen, end the Boo effect immediately
-            if (isPlayer) {
+        // Item Stealing Logic
+        // stealItemWithBoo will set this.playerItem or racer.item to the stolen item if successful.
+        // If not successful, the user's item slot still holds 'boo' at this point.
+        const itemStolenSuccessfully = this.stealItemWithBoo(racer);
+
+        if (itemStolenSuccessfully) {
+            // Invisibility ends because an item was stolen.
+            // The user's item slot (this.playerItem or racer.item) now contains the STOLEN item.
+            if (isPlayerBooUser) {
                 this.playerInvisibilityDuration = 0; // Will be processed in updateKart
             } else {
                 racer.invisibilityDuration = 0; // Will be processed in updateBots
             }
             console.log("Boo effect ended due to successful steal.");
+        } else {
+            // Steal failed. The 'boo' item currently in the slot should be consumed.
+            // Invisibility continues for its normal duration.
+            if (isPlayerBooUser) {
+                this.playerItem = null; // Consume the 'boo' as steal failed
+            } else {
+                racer.item = null; // Consume the 'boo' for the bot as steal failed
+            }
+            console.log("Boo failed to steal an item; Boo is consumed, invisibility continues.");
         }
-        // If itemStolen is false, the Boo effect continues for its normal duration.
+        // The player's item display will be updated by the calling useItem function.
     }
     
     stealItemWithBoo(thief) {
