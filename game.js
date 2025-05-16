@@ -171,12 +171,13 @@ class Game {
         this.originalPlayerScale = new THREE.Vector3(1, 1, 1); // Store original scale
 
         // Item Trailing State
-        this.isItemButtonPressed = false;
+        this.isItemButtonPressed = false; // Generic flag for item button being down (UI or key)
         this.playerIsTrailingItem = false;
         this.playerTrailedItemMesh = null;
         this.playerTrailedItemType = null;
-        this.itemHoldTimeout = null;
+        this.itemHoldTimeout = null; // Timer for item hold (both UI button and 'e' key)
         this.ITEM_HOLD_THRESHOLD = 200; // ms for hold detection
+        this.buttonHoldThresholdMet = false; // Specific to UI button hold detection
 
         // Item Effect Constants
         this.bananaStunTime = 1.0;
@@ -1098,65 +1099,65 @@ class Game {
         // Special handling for useItem touch control to call the function directly
         const useItemElement = document.getElementById('use-item-button');
         if (useItemElement) {
-            useItemElement.addEventListener('touchstart', (e) => {
-                e.preventDefault(); e.stopPropagation();
-                this.isItemButtonPressed = true;
+            const onUseItemPress = () => {
+                this.isItemButtonPressed = true; // General button state
+                this.buttonHoldThresholdMet = false; // Reset UI button specific hold flag
                 if (this.playerItem && !this.playerIsTrailingItem && this.isTrailableItem(this.playerItem)) {
+                    // For UI button (touch/mouse), set timeout to flag hold, don't start trailing yet
                     this.itemHoldTimeout = setTimeout(() => {
-                        if (this.isItemButtonPressed && this.playerItem) {
-                            this.startTrailingItem();
+                        if (this.isItemButtonPressed && this.playerItem) { // Check button still pressed & item exists
+                            this.buttonHoldThresholdMet = true;
                         }
                     }, this.ITEM_HOLD_THRESHOLD);
                 }
                 useItemElement.style.background = 'rgba(100, 100, 255, 0.8)';
-            }, { passive: false });
+            };
 
             const onUseItemEnd = (e) => {
-                if (e) { e.preventDefault(); e.stopPropagation(); } // e might not exist for mouseleave
+                if (e) { e.preventDefault(); e.stopPropagation(); }
                 clearTimeout(this.itemHoldTimeout);
-                if (this.isItemButtonPressed) {
+
+                if (this.isItemButtonPressed) { // Was the button (UI or key) considered pressed?
                     if (this.playerIsTrailingItem) {
+                        // If an item is ALREADY being trailed (e.g., by holding 'e' key, then UI button released)
                         this.deployTrailedItem();
-                    } else if (this.playerItem) { // Tap
-                        this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
+                    } else if (this.playerItem) {
+                        // Player has an item, and it's not currently in playerIsTrailingItem state.
+                        // This block handles UI button tap or UI button hold-release.
+                        if (this.buttonHoldThresholdMet && this.isTrailableItem(this.playerItem)) {
+                            // UI Button was held long enough for a trailable item.
+                            this.startTrailingItem(); // Make item appear visually behind.
+                            if (this.playerIsTrailingItem) { // If startTrailingItem succeeded
+                                this.deployTrailedItem(); // Immediately deploy it.
+                            }
+                        } else {
+                            // UI Button was tapped (or hold was for non-trailable, or threshold not met).
+                            this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
+                        }
                     }
                 }
                 this.isItemButtonPressed = false;
+                this.buttonHoldThresholdMet = false; // Reset UI button specific flag
                 useItemElement.style.background = 'rgba(100, 100, 255, 0.5)';
             };
 
+            useItemElement.addEventListener('touchstart', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                onUseItemPress();
+            }, { passive: false });
             useItemElement.addEventListener('touchend', onUseItemEnd, { passive: false });
             useItemElement.addEventListener('touchcancel', onUseItemEnd, { passive: false });
 
-            // Add mouse events for desktop testing consistency
             useItemElement.addEventListener('mousedown', (e) => {
-                // e.preventDefault(); // Typically not needed for mouse like touch
-                this.isItemButtonPressed = true;
-                if (this.playerItem && !this.playerIsTrailingItem && this.isTrailableItem(this.playerItem)) {
-                    this.itemHoldTimeout = setTimeout(() => {
-                        if (this.isItemButtonPressed && this.playerItem) {
-                            this.startTrailingItem();
-                        }
-                    }, this.ITEM_HOLD_THRESHOLD);
-                }
-                useItemElement.style.background = 'rgba(100, 100, 255, 0.8)';
+                onUseItemPress();
             });
             useItemElement.addEventListener('mouseup', (e) => {
-                onUseItemEnd(null); // Pass null as event, not strictly needed by onUseItemEnd's current form
+                onUseItemEnd(null);
             });
             useItemElement.addEventListener('mouseleave', (e) => {
-                // If mouse leaves while pressed, treat as release for deploying trailed item
-                if (this.isItemButtonPressed) {
-                    // Clear timeout if it hasn't fired (i.e., it was a short press then mouseleave)
-                    clearTimeout(this.itemHoldTimeout);
-                    if (this.playerIsTrailingItem) {
-                        this.deployTrailedItem();
-                    }
-                    // If not trailing, a mouseleave during a tap attempt could be considered a cancel, or fire.
-                    // For simplicity with hold-or-tap, mouseup is the primary trigger for tap.
-                    // We must ensure isItemButtonPressed is reset.
-                    this.isItemButtonPressed = false; 
-                    useItemElement.style.background = 'rgba(100, 100, 255, 0.5)';
+                 // If mouse leaves while pressed, treat as release.
+                if (this.isItemButtonPressed) { // Check generic button press state
+                    onUseItemEnd(null); // Call common end logic. It will handle clearTimeout and other resets.
                 }
             });
         }
