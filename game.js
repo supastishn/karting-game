@@ -2276,8 +2276,11 @@ class Game {
                 chosenItem = 'greenShell';
             }
         } else if (rank === totalRacers) { // Last place
-            availableItems = ['boo', 'lightningBolt', 'mushroom'];
-            // console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 (Last Place) items.`);
+            availableItems = ['boo', 'mushroom'];
+            if (canGetPowerfulItems) {
+                availableItems.push('lightningBolt');
+            }
+            // console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 (Last Place) items. Powerful allowed: ${canGetPowerfulItems}`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         } else if (rank > Math.ceil(totalRacers / 2)) { // Back half of the pack (but not 1st or last)
             availableItems = ['mushroom', 'boo', 'fakeItemBox', 'redShell']; // Added RedShell
@@ -2290,12 +2293,13 @@ class Game {
         }
 
         // Blue Shell specific logic: only for those not in 1st, and more likely for last places
-        if (rank > 1 && rank >= Math.floor(totalRacers * 0.6) && randomFunction() < 0.3) { // e.g. 30% chance if in bottom 40%
-            // console.log(`${racerUniqueId} is ${rank}, eligible for Blue Shell.`);
+        // AND only after 30 seconds
+        if (canGetPowerfulItems && rank > 1 && rank >= Math.floor(totalRacers * 0.6) && randomFunction() < 0.3) {
+            // console.log(`${racerUniqueId} is ${rank}, eligible for Blue Shell (time constraint met).`);
             chosenItem = 'blueShell';
         }
         
-        // Fallback if chosenItem somehow didn't get set (e.g., an item tier list was empty or logic error)
+        // Fallback if chosenItem somehow didn't get set
         if (!chosenItem) {
             // This case should ideally not be hit if all tiers are defined and rank logic is correct.
             // It would apply if, for example, rank 1 logic failed to set chosenItem.
