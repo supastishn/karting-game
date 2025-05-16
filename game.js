@@ -254,53 +254,52 @@ class Game {
             // Create race track (which now also creates walls and checkpoints)
             this.createRaceTrack(); // This also calls createCheckpoints internally
 
-            // Load player kart model
-            const loader = new THREE.OBJLoader();
-            loader.load(
-                '/Pbr/base.obj', // Changed path to Pbr/base.obj
-                (object) => {
-                    this.kart = object;
+            // Load player kart model and texture
+            const textureLoader = new THREE.TextureLoader();
+            const objLoader = new THREE.OBJLoader();
 
-                    // --- Apply transformations and material to the loaded kart ---
-                    // These values are guesses and likely need adjustment.
-                    const desiredHeight = 1.0; // Target height for the kart, doubled from 0.5
-                    const boundingBox = new THREE.Box3().setFromObject(this.kart);
-                    const currentSize = new THREE.Vector3();
-                    boundingBox.getSize(currentSize);
-                    
-                    let scaleFactor = 1;
-                    if (currentSize.y > 0.001) { // Avoid division by zero or tiny values
-                        scaleFactor = desiredHeight / currentSize.y;
-                    } else if (currentSize.x > 0.001) {
-                        scaleFactor = 1.0 / currentSize.x; // Fallback if height is zero
-                    } else {
-                        scaleFactor = 0.1; // Default small scale if size is weird
-                    }
+            textureLoader.load(
+                '/Shaded/shaded.png', // Path to the texture file
+                (texture) => {
+                    // Texture loaded successfully
+                    objLoader.load(
+                        '/Shaded/base.obj', // Path to your OBJ file
+                        (object) => {
+                            this.kart = object;
 
-                    this.kart.scale.set(scaleFactor, scaleFactor, scaleFactor);
-                    
-                    // Adjust rotation if necessary - OBJ might be Z-up or X-forward
-                    // Assuming model is Z-forward like the original box. If it's Y-up, it might need:
-                    // this.kart.rotation.x = -Math.PI / 2;
-                    // If model is X-forward, it might need:
-                    // this.kart.rotation.y = -Math.PI / 2; 
-                    
-                    // Apply a new material to all meshes in the loaded OBJ
-                    const kartMaterial = new THREE.MeshStandardMaterial({
-                        color: 0x800080, // Purple, similar to original
-                        roughness: 0.6,
-                        metalness: 0.3
-                    });
-                    this.kart.traverse((child) => {
-                        if (child.isMesh) {
-                            child.material = kartMaterial;
-                            child.castShadow = true; // Optional: if you add shadows later
-                            child.receiveShadow = true; // Optional
-                        }
-                    });
+                            // --- Apply transformations and material to the loaded kart ---
+                            const desiredHeight = 1.0; // Target height for the kart
+                            const boundingBox = new THREE.Box3().setFromObject(this.kart);
+                            const currentSize = new THREE.Vector3();
+                            boundingBox.getSize(currentSize);
+                            
+                            let scaleFactor = 1;
+                            if (currentSize.y > 0.001) {
+                                scaleFactor = desiredHeight / currentSize.y;
+                            } else if (currentSize.x > 0.001) {
+                                scaleFactor = 1.0 / currentSize.x;
+                            } else {
+                                scaleFactor = 0.1;
+                            }
 
-                    this.scene.add(this.kart);
-                    // --- End Kart Model Setup ---
+                            this.kart.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                            
+                            // Apply the loaded texture using MeshBasicMaterial
+                            // If the texture is just a color map for a PBR workflow and the model has normals,
+                            // you might prefer MeshStandardMaterial:
+                            // const kartMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.6, metalness: 0.3 });
+                            const kartMaterial = new THREE.MeshBasicMaterial({ map: texture });
+                            
+                            this.kart.traverse((child) => {
+                                if (child.isMesh) {
+                                    child.material = kartMaterial;
+                                    child.castShadow = true; 
+                                    child.receiveShadow = true; 
+                                }
+                            });
+
+                            this.scene.add(this.kart);
+                            // --- End Kart Model Setup ---
 
                     // Define start parameters based on the first checkpoint
                     const newStartCheckpoint = this.checkpoints[0];
@@ -327,35 +326,82 @@ class Game {
                     this.camera.position.copy(this.cameraTargetPosition);
                     this.camera.lookAt(this.kart.position);
                     
-                    console.log("Player kart model loaded and positioned.");
-                    resolve(); // Resolve the promise once model is loaded and scene setup
+                            console.log("Player kart model loaded and textured.");
+                            resolve(); // Resolve the promise once model is loaded and scene setup
+                        },
+                        undefined, // onProgress for OBJ
+                        (error) => {
+                            console.error('An error happened while loading the OBJ model:', error);
+                            reject(error); // Reject if OBJ loading fails
+                        }
+                    );
                 },
-                undefined, // onProgress callback (optional)
+                undefined, // onProgress for texture
                 (error) => {
-                    console.error('An error happened while loading the OBJ model:', error);
-                    // Fallback: create the old box kart so the game can still run
-                    const kartGeometry = new THREE.BoxGeometry(1, 0.5, 2);
-                    const kartMaterial = new THREE.MeshBasicMaterial({ color: 0x800080 });
-                    this.kart = new THREE.Mesh(kartGeometry, kartMaterial);
-                    this.scene.add(this.kart);
-                    
-                    // Position fallback kart
-                    const newStartCheckpoint = this.checkpoints[0];
-                    const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
-                    const startOffsetDistance = 3.0;
-                    const forwardVector = new THREE.Vector3(Math.sin(startParams.rotation),0,Math.cos(startParams.rotation));
-                    const finalStartPosition = new THREE.Vector3(startParams.x + forwardVector.x * startOffsetDistance, 0.25, startParams.z + forwardVector.z * startOffsetDistance);
-                    this.kart.position.copy(finalStartPosition);
-                    this.kart.rotation.y = startParams.rotation + Math.PI;
-                    
-                    this.updateCamera();
-                    this.camera.position.copy(this.cameraTargetPosition);
-                    this.camera.lookAt(this.kart.position);
+                    console.error('An error happened while loading the texture:', error);
+                    // Fallback: Load OBJ with default material if texture fails, or reject
+                    // For simplicity, we'll try to load the OBJ with a basic material
+                    objLoader.load(
+                        '/Shaded/base.obj',
+                        (object) => {
+                            this.kart = object;
+                            // Apply basic material as fallback
+                            const fallbackMaterial = new THREE.MeshStandardMaterial({ color: 0x800080, roughness:0.6, metalness: 0.3});
+                            this.kart.traverse((child) => { if (child.isMesh) child.material = fallbackMaterial; });
+                            
+                            // Apply scale etc.
+                            const desiredHeight = 1.0; 
+                            const boundingBox = new THREE.Box3().setFromObject(this.kart);
+                            const currentSize = new THREE.Vector3();
+                            boundingBox.getSize(currentSize);
+                            let scaleFactor = (currentSize.y > 0.001) ? desiredHeight / currentSize.y : 0.1;
+                            this.kart.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
-                    console.warn("Fell back to default box kart.");
-                    // Still resolve, but with fallback
-                    // Or reject if critical: reject(error);
-                    resolve(); 
+                            this.scene.add(this.kart);
+
+                            // Position fallback kart (copied from original fallback)
+                            const newStartCheckpoint = this.checkpoints[0];
+                            const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
+                            const startOffsetDistance = 3.0;
+                            const forwardVector = new THREE.Vector3(Math.sin(startParams.rotation),0,Math.cos(startParams.rotation));
+                            const finalStartPosition = new THREE.Vector3(startParams.x + forwardVector.x * startOffsetDistance, 0.25, startParams.z + forwardVector.z * startOffsetDistance);
+                            this.kart.position.copy(finalStartPosition);
+                            const newBoundingBox = new THREE.Box3().setFromObject(this.kart);
+                            this.kart.position.y -= newBoundingBox.min.y;
+                            this.kart.rotation.y = startParams.rotation + Math.PI;
+                            this.updateCamera();
+                            this.camera.position.copy(this.cameraTargetPosition);
+                            this.camera.lookAt(this.kart.position);
+
+                            console.warn("Kart texture failed to load, using default material for Shaded/base.obj.");
+                            resolve(); // Resolve even if texture fails, with model loaded
+                        },
+                        undefined,
+                        (objError) => {
+                             console.error('Fallback OBJ loading also failed:', objError);
+                             // Last resort: create the old box kart
+                            const kartGeometry = new THREE.BoxGeometry(1, 0.5, 2); // Adjusted to reflect previous kart size if desiredHeight was 1.0
+                            const kartMaterial = new THREE.MeshBasicMaterial({ color: 0x800080 });
+                            this.kart = new THREE.Mesh(kartGeometry, kartMaterial);
+                            this.scene.add(this.kart);
+                            
+                            // Position fallback box kart
+                            const newStartCheckpoint = this.checkpoints[0];
+                            const startParams = { x: newStartCheckpoint.position.x, z: newStartCheckpoint.position.z, rotation: newStartCheckpoint.rotation };
+                            const startOffsetDistance = 3.0;
+                            const forwardVector = new THREE.Vector3(Math.sin(startParams.rotation),0,Math.cos(startParams.rotation));
+                            const finalStartPosition = new THREE.Vector3(startParams.x + forwardVector.x * startOffsetDistance, 0.25, startParams.z + forwardVector.z * startOffsetDistance);
+                            this.kart.position.copy(finalStartPosition);
+                            this.kart.rotation.y = startParams.rotation + Math.PI;
+                            
+                            this.updateCamera();
+                            this.camera.position.copy(this.cameraTargetPosition);
+                            this.camera.lookAt(this.kart.position);
+
+                            console.warn("Both texture and OBJ model loading failed. Fell back to default box kart.");
+                            resolve(); // Resolve with box kart as last resort
+                        }
+                    );
                 }
             );
         });
