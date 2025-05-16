@@ -170,6 +170,14 @@ class Game {
         this.playerShrinkDuration = 0; // For Lightning
         this.originalPlayerScale = new THREE.Vector3(1, 1, 1); // Store original scale
 
+        // Item Trailing State
+        this.isItemButtonPressed = false;
+        this.playerIsTrailingItem = false;
+        this.playerTrailedItemMesh = null;
+        this.playerTrailedItemType = null;
+        this.itemHoldTimeout = null;
+        this.ITEM_HOLD_THRESHOLD = 200; // ms for hold detection
+
         // Item Effect Constants
         this.bananaStunTime = 1.0;
         this.mushroomBoostMultiplier = 1.5;
@@ -1000,7 +1008,19 @@ class Game {
             }
             // Use item with 'e' key
             if (e.key.toLowerCase() === 'e' && !wasPressed) {
-                 this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration }); // Pass player object wrapper
+                this.isItemButtonPressed = true;
+                if (this.playerItem && !this.playerIsTrailingItem && this.isTrailableItem(this.playerItem)) {
+                    this.itemHoldTimeout = setTimeout(() => {
+                        if (this.isItemButtonPressed && this.playerItem) { // Check again in case item used or button released
+                            this.startTrailingItem();
+                        }
+                    }, this.ITEM_HOLD_THRESHOLD);
+                } else if (this.playerItem) { // Not trailable, or already trailing but button pressed again (should not happen if logic is tight)
+                    // For non-trailable items, or if trying to use while already trailing (which startTrailingItem should prevent)
+                    // This path is more for immediate use of non-trailable items if logic were to allow 'e' for them.
+                    // Current useItem button handles only trailable items effectively via the timeout for hold.
+                    // If it's a quick tap for a trailable item, it will be handled in keyup.
+                }
             }
             // Rear view toggle with 'c' key
             if (e.key.toLowerCase() === 'c' && !wasPressed) {
@@ -1012,6 +1032,17 @@ class Game {
             this.keys[e.key.toLowerCase()] = false;
             if (e.key === ' ') {
                 this.touchControls.drift = false;
+            }
+            if (e.key.toLowerCase() === 'e') {
+                clearTimeout(this.itemHoldTimeout);
+                if (this.isItemButtonPressed) {
+                    if (this.playerIsTrailingItem) {
+                        this.deployTrailedItem();
+                    } else if (this.playerItem) { // Tap completed for an item that wasn't trailed
+                        this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
+                    }
+                }
+                this.isItemButtonPressed = false;
             }
             // Set rear view to false on key up for 'c'
             if (e.key.toLowerCase() === 'c') {
@@ -1068,16 +1099,66 @@ class Game {
         const useItemElement = document.getElementById('use-item-button');
         if (useItemElement) {
             useItemElement.addEventListener('touchstart', (e) => {
-                 e.preventDefault();
-                 e.stopPropagation();
-                 this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
-                 useItemElement.style.background = 'rgba(100, 100, 255, 0.8)'; // Darker feedback
+                e.preventDefault(); e.stopPropagation();
+                this.isItemButtonPressed = true;
+                if (this.playerItem && !this.playerIsTrailingItem && this.isTrailableItem(this.playerItem)) {
+                    this.itemHoldTimeout = setTimeout(() => {
+                        if (this.isItemButtonPressed && this.playerItem) {
+                            this.startTrailingItem();
+                        }
+                    }, this.ITEM_HOLD_THRESHOLD);
+                }
+                useItemElement.style.background = 'rgba(100, 100, 255, 0.8)';
             }, { passive: false });
-             useItemElement.addEventListener('touchend', (e) => {
-                 e.preventDefault();
-                 e.stopPropagation();
-                 useItemElement.style.background = 'rgba(100, 100, 255, 0.5)'; // Restore background
-            }, { passive: false });
+
+            const onUseItemEnd = (e) => {
+                if (e) { e.preventDefault(); e.stopPropagation(); } // e might not exist for mouseleave
+                clearTimeout(this.itemHoldTimeout);
+                if (this.isItemButtonPressed) {
+                    if (this.playerIsTrailingItem) {
+                        this.deployTrailedItem();
+                    } else if (this.playerItem) { // Tap
+                        this.useItem({ mesh: this.kart, item: this.playerItem, stunDuration: this.playerStunDuration, mushroomBoostDuration: this.playerMushroomBoostDuration });
+                    }
+                }
+                this.isItemButtonPressed = false;
+                useItemElement.style.background = 'rgba(100, 100, 255, 0.5)';
+            };
+
+            useItemElement.addEventListener('touchend', onUseItemEnd, { passive: false });
+            useItemElement.addEventListener('touchcancel', onUseItemEnd, { passive: false });
+
+            // Add mouse events for desktop testing consistency
+            useItemElement.addEventListener('mousedown', (e) => {
+                // e.preventDefault(); // Typically not needed for mouse like touch
+                this.isItemButtonPressed = true;
+                if (this.playerItem && !this.playerIsTrailingItem && this.isTrailableItem(this.playerItem)) {
+                    this.itemHoldTimeout = setTimeout(() => {
+                        if (this.isItemButtonPressed && this.playerItem) {
+                            this.startTrailingItem();
+                        }
+                    }, this.ITEM_HOLD_THRESHOLD);
+                }
+                useItemElement.style.background = 'rgba(100, 100, 255, 0.8)';
+            });
+            useItemElement.addEventListener('mouseup', (e) => {
+                onUseItemEnd(null); // Pass null as event, not strictly needed by onUseItemEnd's current form
+            });
+            useItemElement.addEventListener('mouseleave', (e) => {
+                // If mouse leaves while pressed, treat as release for deploying trailed item
+                if (this.isItemButtonPressed) {
+                    // Clear timeout if it hasn't fired (i.e., it was a short press then mouseleave)
+                    clearTimeout(this.itemHoldTimeout);
+                    if (this.playerIsTrailingItem) {
+                        this.deployTrailedItem();
+                    }
+                    // If not trailing, a mouseleave during a tap attempt could be considered a cancel, or fire.
+                    // For simplicity with hold-or-tap, mouseup is the primary trigger for tap.
+                    // We must ensure isItemButtonPressed is reset.
+                    this.isItemButtonPressed = false; 
+                    useItemElement.style.background = 'rgba(100, 100, 255, 0.5)';
+                }
+            });
         }
         
         // Special handling for rearView touch control (hold)
@@ -1926,23 +2007,149 @@ class Game {
     // --- Item System Logic ---
 
     updateItemDisplay() {
-        if (this.playerItem) {
-            let itemSymbol = '?';
-            if (this.playerItem === 'mushroom') itemSymbol = '🍄';
-            else if (this.playerItem === 'banana') itemSymbol = '🍌';
-            else if (this.playerItem === 'greenShell') itemSymbol = '🐢';
-            else if (this.playerItem === 'redShell') itemSymbol = '🎯'; // Red shell symbol
-            else if (this.playerItem === 'fakeItemBox') itemSymbol = '❓';
-            else if (this.playerItem === 'boo') itemSymbol = '👻';
-            else if (this.playerItem === 'lightningBolt') itemSymbol = '⚡';
+        let itemToShow = this.playerItem;
+        let itemSymbol = '?'; // Default symbol
+
+        if (this.playerIsTrailingItem && this.playerTrailedItemType) {
+            itemToShow = this.playerTrailedItemType; // Prioritize showing the trailed item
+        }
+
+        if (itemToShow) {
+            if (itemToShow === 'mushroom') itemSymbol = '🍄';
+            else if (itemToShow === 'banana') itemSymbol = '🍌';
+            else if (itemToShow === 'greenShell') itemSymbol = '🐢';
+            else if (itemToShow === 'redShell') itemSymbol = '🎯';
+            else if (itemToShow === 'fakeItemBox') itemSymbol = '❓';
+            else if (itemToShow === 'boo') itemSymbol = '👻';
+            else if (itemToShow === 'lightningBolt') itemSymbol = '⚡';
+            
             this.itemNameDisplay.textContent = itemSymbol;
             this.itemDisplay.classList.remove('hidden');
-            this.useItemButton.classList.remove('hidden'); // Show use button if item held
+            this.useItemButton.classList.remove('hidden'); // Show use button if item held or being trailed
         } else {
             this.itemNameDisplay.textContent = '';
             this.itemDisplay.classList.add('hidden');
-            this.useItemButton.classList.add('hidden'); // Hide use button if no item
+            this.useItemButton.classList.add('hidden'); // Hide use button if no item and not trailing
         }
+    }
+
+    isTrailableItem(itemType) {
+        return ['banana', 'greenShell', 'redShell', 'fakeItemBox'].includes(itemType);
+    }
+
+    startTrailingItem() {
+        if (!this.playerItem || !this.isTrailableItem(this.playerItem) || this.playerIsTrailingItem) return;
+
+        // console.log(`Player starts trailing ${this.playerItem}`);
+        this.playerIsTrailingItem = true;
+        this.playerTrailedItemType = this.playerItem;
+        this.playerItem = null; // Item is now "in use" being trailed.
+
+        let trailGeo, trailMat;
+
+        switch (this.playerTrailedItemType) {
+            case 'banana':
+                trailGeo = new THREE.SphereGeometry(0.5, 8, 6);
+                trailMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                break;
+            case 'greenShell':
+                trailGeo = new THREE.SphereGeometry(0.6, 8, 6);
+                trailMat = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
+                break;
+            case 'redShell':
+                trailGeo = new THREE.SphereGeometry(0.6, 8, 6);
+                trailMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                break;
+            case 'fakeItemBox':
+                trailGeo = new THREE.BoxGeometry(1.8, 1.8, 1.8); // Match visual size
+                const canvas = document.createElement('canvas');
+                canvas.width = 64; canvas.height = 64;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(200, 0, 0, 0.7)';
+                ctx.fillRect(0,0,64,64);
+                ctx.fillStyle = 'white'; ctx.font = 'bold 48px Arial';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('?', 32, 36);
+                const texture = new THREE.CanvasTexture(canvas);
+                trailMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+                break;
+            default:
+                console.error("Untrailable item type passed to startTrailingItem:", this.playerTrailedItemType);
+                this.playerIsTrailingItem = false;
+                this.playerTrailedItemType = null; 
+                // this.playerItem = tempItem; // Should not happen due to guard
+                return;
+        }
+
+        this.playerTrailedItemMesh = new THREE.Mesh(trailGeo, trailMat);
+        this.updateTrailedItemPosition(); // Initial position
+        this.scene.add(this.playerTrailedItemMesh);
+        
+        this.updateItemDisplay();
+    }
+
+    deployTrailedItem() {
+        if (!this.playerIsTrailingItem || !this.playerTrailedItemType) return;
+
+        // console.log(`Player deploys trailed ${this.playerTrailedItemType}`);
+        if (this.playerTrailedItemMesh) {
+            this.scene.remove(this.playerTrailedItemMesh);
+            if (this.playerTrailedItemMesh.geometry) this.playerTrailedItemMesh.geometry.dispose();
+            if (this.playerTrailedItemMesh.material) {
+                // Dispose material maps if they are unique (e.g. CanvasTexture)
+                if (this.playerTrailedItemMesh.material.map && this.playerTrailedItemMesh.material.map.dispose) {
+                    this.playerTrailedItemMesh.material.map.dispose();
+                }
+                this.playerTrailedItemMesh.material.dispose();
+            }
+            this.playerTrailedItemMesh = null;
+        }
+
+        const itemToDeploy = this.playerTrailedItemType; // Store before clearing state
+        
+        // Temporarily assign to playerItem for useItem to pick up, or pass directly
+        // For simplicity, we'll call the specific use functions directly.
+        const playerRacerContext = { 
+            mesh: this.kart, 
+            // The actual item use functions below will handle their logic based on 'itemToDeploy'
+            // They don't strictly need item in racer context if we switch-case here.
+        };
+
+
+        switch (itemToDeploy) {
+            case 'banana':
+                this.useBanana(playerRacerContext); // Pass player context
+                break;
+            case 'greenShell':
+                this.useGreenShell(playerRacerContext); // Assumes forward fire
+                break;
+            case 'redShell':
+                this.useRedShell(playerRacerContext);   // Assumes forward fire
+                break;
+            case 'fakeItemBox':
+                this.useFakeItemBox(playerRacerContext);
+                break;
+        }
+
+        this.playerIsTrailingItem = false;
+        this.playerTrailedItemType = null;
+        // this.playerItem is already null
+        this.updateItemDisplay();
+    }
+
+    updateTrailedItemPosition() {
+        if (!this.playerIsTrailingItem || !this.playerTrailedItemMesh || !this.kart) return;
+
+        const trailDistance = -1.5; 
+        const trailHeight = 0.5;    
+
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.kart.quaternion);
+        const trailPosition = this.kart.position.clone()
+            .addScaledVector(forward, trailDistance);
+        trailPosition.y = this.kart.position.y - 0.25 + trailHeight; // Relative to kart's current y, then adjust
+
+        this.playerTrailedItemMesh.position.copy(trailPosition);
+        this.playerTrailedItemMesh.rotation.y = this.kart.rotation.y; // Align with kart's direction
     }
 
     giveItem(racer) {
@@ -2324,10 +2531,41 @@ class Game {
             shellPos.add(moveAmountVec);
             shellPos.y = 0.5; 
 
+            // Collision with player's TRAILED item (if player is not the target and item exists)
+            // This check should ideally be before target collision if the trailed item is meant to intercept.
+            // Red shells target racers, so if it's targeting the player, it should hit player, not their trailed item unless it's a different red shell.
+            // For now, let's assume any red shell can be blocked by a trailed item.
+            if (this.playerIsTrailingItem && this.playerTrailedItemMesh && this.playerTrailedItemMesh.visible) {
+                 let trailedItemRadius = 0.6;
+                 if (this.playerTrailedItemType === 'fakeItemBox') trailedItemRadius = 0.9;
+                 else if (this.playerTrailedItemType === 'banana') trailedItemRadius = 0.5;
+
+                if (shellPos.distanceTo(this.playerTrailedItemMesh.position) < (0.6 + trailedItemRadius)) {
+                    // console.log("Red shell hit player's trailed item:", this.playerTrailedItemType);
+                    this.scene.remove(shell.mesh);
+                    if(shell.mesh.geometry) shell.mesh.geometry.dispose();
+                    this.activeRedShells.splice(i, 1);
+
+                    this.scene.remove(this.playerTrailedItemMesh);
+                    if(this.playerTrailedItemMesh.geometry) this.playerTrailedItemMesh.geometry.dispose();
+                     if(this.playerTrailedItemMesh.material) {
+                        if(this.playerTrailedItemMesh.material.map && this.playerTrailedItemMesh.material.map.dispose) this.playerTrailedItemMesh.material.map.dispose();
+                        this.playerTrailedItemMesh.material.dispose();
+                    }
+                    this.playerTrailedItemMesh = null;
+                    this.playerIsTrailingItem = false;
+                    this.playerTrailedItemType = null;
+                    this.updateItemDisplay();
+                    continue; // Red shell destroyed, player protected by trailed item.
+                }
+            }
+
+
             // Collision with target
             if (shellPos.distanceTo(targetPos) < 1.0) { 
                 this.applyRedShellHit(shell.target); // Pass the racer object stored in shell.target
                 this.scene.remove(shell.mesh);
+                 if(shell.mesh.geometry) shell.mesh.geometry.dispose();
                 this.activeRedShells.splice(i, 1);
                 continue;
             }
@@ -3129,6 +3367,9 @@ class Game {
             this.checkCheckpoints();
             this.updateScoreboard();
             this.updateDriftSparks(deltaTime);
+            if (this.playerIsTrailingItem) {
+                this.updateTrailedItemPosition();
+            }
         } else if (this.gameState === 'countdown') {
             // Keep camera updated during countdown
             this.updateCamera();
@@ -3195,11 +3436,40 @@ class Game {
                 continue;
             }
 
-            // Check collision with player
+            // Check collision with player's TRAILED item first
+            if (this.playerIsTrailingItem && this.playerTrailedItemMesh && this.playerTrailedItemMesh.visible) {
+                // Approximate radii: green shell 0.6, trailed items vary (0.5 to 0.9)
+                let trailedItemRadius = 0.6; // Default, adjust if specific types are very different
+                if (this.playerTrailedItemType === 'fakeItemBox') trailedItemRadius = 0.9;
+                else if (this.playerTrailedItemType === 'banana') trailedItemRadius = 0.5;
+
+                if (shell.mesh.position.distanceTo(this.playerTrailedItemMesh.position) < (0.6 + trailedItemRadius)) {
+                    // console.log("Green shell hit player's trailed item:", this.playerTrailedItemType);
+                    this.scene.remove(shell.mesh); 
+                    if(shell.mesh.geometry) shell.mesh.geometry.dispose();
+                    // shell.mesh.material.dispose(); // If not shared
+                    this.activeGreenShells.splice(i, 1);
+
+                    this.scene.remove(this.playerTrailedItemMesh); 
+                    if(this.playerTrailedItemMesh.geometry) this.playerTrailedItemMesh.geometry.dispose();
+                    if(this.playerTrailedItemMesh.material) {
+                        if(this.playerTrailedItemMesh.material.map && this.playerTrailedItemMesh.material.map.dispose) this.playerTrailedItemMesh.material.map.dispose();
+                        this.playerTrailedItemMesh.material.dispose();
+                    }
+                    this.playerTrailedItemMesh = null;
+                    this.playerIsTrailingItem = false;
+                    this.playerTrailedItemType = null;
+                    this.updateItemDisplay();
+                    continue; // Shell is gone, player protected
+                }
+            }
+
+            // Check collision with player (if not hit trailed item)
             if (shell.owner.mesh !== this.kart && !this.playerIsInvisible) {
-                if (shell.mesh.position.distanceTo(this.kart.position) < 1.0) { // 0.6 shell radius + 0.5 kart approx
+                if (shell.mesh.position.distanceTo(this.kart.position) < 1.0) { 
                     this.applyGreenShellHit({ mesh: this.kart });
                     this.scene.remove(shell.mesh);
+                    if(shell.mesh.geometry) shell.mesh.geometry.dispose();
                     this.activeGreenShells.splice(i, 1);
                     continue;
                 }
