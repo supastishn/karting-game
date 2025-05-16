@@ -2262,15 +2262,18 @@ class Game {
     stealItemWithBoo(thief) {
         let racersToTarget = [];
         let itemWasStolen = false;
-        const thiefIsPlayer = thief.mesh === this.kart;
-        console.log(`Boo logic: Thief is ${thiefIsPlayer ? 'Player' : `Bot ${this.bots.indexOf(thief)}`}`);
+        // Determine if the thief is the player.
+        // 'thief' will be 'this.kart' (the THREE.Group) if player, or a bot object if bot.
+        const isThiefThePlayer = (thief === this.kart);
+        
+        console.log(`Boo logic: Thief is ${isThiefThePlayer ? 'Player' : `Bot ${this.bots.indexOf(thief)}`}`);
 
         // Determine which PRNG to use for target selection
-        const randomFunctionForTargetSelection = thiefIsPlayer ? this.playerRandom : thief.random;
+        const randomFunctionForTargetSelection = isThiefThePlayer ? this.playerRandom : thief.random;
 
-        if (thief.mesh === this.kart) { // Player is the thief
+        if (isThiefThePlayer) { // Player is the thief
             racersToTarget = this.bots.filter(b => b.item !== null && !b.isInvisible);
-        } else { // Bot is the thief
+        } else { // Bot is the thief (thief is a bot object)
             if (this.playerItem !== null && !this.playerIsInvisible) {
                  racersToTarget.push({racerObj: this, itemHolder: 'player'}); // Target player
             }
@@ -2278,7 +2281,9 @@ class Game {
         }
         
         const targetDetails = racersToTarget.map(t_or_w => {
-            if (thief.mesh === this.kart) { 
+            // If isThiefThePlayer is true, racersToTarget contains bot objects (t_or_w is a bot)
+            // If isThiefThePlayer is false, racersToTarget contains wrapper objects (t_or_w is a wrapper)
+            if (isThiefThePlayer) { 
                 return `Bot ${this.bots.indexOf(t_or_w)} (Item: ${t_or_w.item})`;
             } else { 
                 const itemHolder = t_or_w.itemHolder;
@@ -2298,7 +2303,7 @@ class Game {
             let stolenItemValue = null; // Temporary variable to hold the item string
             let victimLogName = "Unknown";
 
-            if (thief.mesh === this.kart) { // Player is the thief, selectedTargetData is a direct bot object
+            if (isThiefThePlayer) { // Player is the thief, selectedTargetData is a direct bot object
                 const victimBot = selectedTargetData;
                 // The filter `b.item !== null` should ensure victimBot.item is truthy if a target is found.
                 if (victimBot.item) { 
@@ -2333,10 +2338,10 @@ class Game {
             if (itemWasStolen) { // If a steal was successful
                 console.log(`Boo stole ${stolenItemValue} from ${victimLogName}!`);
                 // Give stolen item to thief
-                if (thief.mesh === this.kart) { // Player is the thief
+                if (isThiefThePlayer) { // Player is the thief
                     this.playerItem = stolenItemValue;
                     this.updateItemDisplay(); // Thief player updates their display with the new item
-                } else { // Bot is the thief
+                } else { // Bot is the thief (thief is a bot object)
                     thief.item = stolenItemValue;
                 }
             }
