@@ -178,6 +178,7 @@ class Game {
         this.WALL_HEIGHT = 3.0;
         this.WALL_THICKNESS = 1.0; // Increased thickness for better visibility/collision
         this.WALL_MATERIAL = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8, metalness: 0.2 });
+        this.kartRadius = 1.0; // Approximate radius for kart collision
 
 
         // UI Elements
@@ -1413,9 +1414,19 @@ class Game {
             0,
             Math.cos(this.kart.rotation.y) * this.speed
         );
-        this.kart.position.add(movement);
 
-        // Apply bump impulse
+        // Handle wall collisions before adding main movement
+        const collidedWithWall = this.handleWallCollisions(
+            { mesh: this.kart, speedRef: { get: () => this.speed, set: (val) => this.speed = val }, rotationYRef: { get: () => this.kart.rotation.y, set: (val) => this.kart.rotation.y = val }, impulse: this.impulse, isPlayer: true },
+            movement,
+            this.kartRadius
+        );
+
+        if (!collidedWithWall) {
+            this.kart.position.add(movement);
+        }
+
+        // Apply bump impulse (still applies even if wall-collided, can be adjusted)
         this.kart.position.add(this.impulse);
         // Decay impulse
         this.impulse.multiplyScalar(this.impulseDecay);
@@ -1516,48 +1527,23 @@ class Game {
 
                 // Check if the intersection happened within the gate width
                 if (Math.abs(distanceAlongGate) < checkpointWidth / 2) {
-                    // Log checkpoint entry
-                    console.log(`%cCrossed Checkpoint ${i + 1} Plane!`, 'background: #4CAF50; color: white; padding: 4px; border-radius: 4px;');
-                    console.debug({
-                        checkpoint: i + 1,
-                        kartPosition: {
-                        x: this.kart.position.x.toFixed(2),
-                        y: this.kart.position.y.toFixed(2),
-                        z: this.kart.position.z.toFixed(2)
-                    },
-                    leftPost: {
-                        x: leftPost.x.toFixed(2),
-                        z: leftPost.z.toFixed(2)
-                    },
-                    rightPost: {
-                        x: rightPost.x.toFixed(2),
-                        z: rightPost.z.toFixed(2)
-                    },
-                    intersectionPoint: {
-                        x: intersectionPoint.x.toFixed(2),
-                        z: intersectionPoint.z.toFixed(2)
-                    },
-                    distanceAlongGate: distanceAlongGate.toFixed(2),
-                    checkpointWidth: checkpointWidth.toFixed(2)
-                });
+                    // Check if this is the next expected checkpoint
+                    if (i === (this.lastCheckpoint + 1) % this.totalCheckpoints) {
+                        // Check for lap completion *before* updating lastCheckpoint
+                        // Condition: Crossing the finish line (i=3) and the previous checkpoint was 2
+                        const completingLap = (i === 3 && this.lastCheckpoint === 2);
 
-                // Check if this is the next expected checkpoint
-                if (i === (this.lastCheckpoint + 1) % this.totalCheckpoints) {
-                    // Check for lap completion *before* updating lastCheckpoint
-                    // Condition: Crossing the finish line (i=3) and the previous checkpoint was 2
-                    const completingLap = (i === 3 && this.lastCheckpoint === 2);
+                        // Now update lastCheckpoint
+                        this.lastCheckpoint = i;
+                        // console.log(`%cValid checkpoint sequence! Checkpoint ${i + 1} registered`, 'background: #2196F3; color: white; padding: 4px; border-radius: 4px;'); // DEBUG REMOVED
 
-                    // Now update lastCheckpoint
-                    this.lastCheckpoint = i;
-                    console.log(`%cValid checkpoint sequence! Checkpoint ${i + 1} registered`, 'background: #2196F3; color: white; padding: 4px; border-radius: 4px;');
+                        if (completingLap) {
+                            this.currentLap++;
+                            this.checkpointsPassed = 0; // Reset checkpoints passed for the new lap
+                            // console.log(`%cLap ${this.currentLap} started!`, 'background: #9C27B0; color: white; padding: 4px; border-radius: 4px;'); // DEBUG REMOVED
+                            this.updateLapCounter();
 
-                    if (completingLap) {
-                        this.currentLap++;
-                        this.checkpointsPassed = 0; // Reset checkpoints passed for the new lap
-                        console.log(`%cLap ${this.currentLap} started!`, 'background: #9C27B0; color: white; padding: 4px; border-radius: 4px;');
-                        this.updateLapCounter();
-
-                        // Check if race is finished
+                            // Check if race is finished
                         if (this.currentLap > this.maxLaps) {
                             this.raceFinished = true;
                             console.log('%cRace Complete!', 'background: #FFC107; color: black; padding: 4px; border-radius: 4px;');
@@ -1612,7 +1598,7 @@ class Game {
                     if (!completingLap) {
                         this.checkpointsPassed++;
                     }
-                    console.debug(`Checkpoints passed this lap: ${this.checkpointsPassed}/${this.totalCheckpoints}`);
+                    // console.debug(`Checkpoints passed this lap: ${this.checkpointsPassed}/${this.totalCheckpoints}`); // DEBUG REMOVED
 
                 } else {
                     console.warn(`Wrong checkpoint sequence! Expected ${(this.lastCheckpoint + 1) % this.totalCheckpoints + 1}, got ${i + 1}`);
@@ -2566,13 +2552,24 @@ class Game {
                 0,
                 Math.cos(bot.mesh.rotation.y)
             );
-            bot.mesh.position.addScaledVector(moveDirection, bot.speed);
+            
+            const botMovementThisFrame = moveDirection.clone().multiplyScalar(bot.speed);
 
-            // Apply bump impulse
+            const botCollidedWithWall = this.handleWallCollisions(
+                bot, // bot object already has .mesh, .speed, .impulse
+                botMovementThisFrame,
+                this.kartRadius // Assuming bot radius is same as player
+            );
+
+            if (!botCollidedWithWall) {
+                bot.mesh.position.add(botMovementThisFrame);
+            }
+
+            // Apply bump impulse (still applies even if wall-collided)
             bot.mesh.position.add(bot.impulse);
             // Decay impulse
             bot.impulse.multiplyScalar(bot.impulseDecay);
-             if (bot.impulse.lengthSq() < 0.0001) {
+            if (bot.impulse.lengthSq() < 0.0001) {
                 bot.impulse.set(0, 0, 0); // Reset if very small
             }
 
@@ -2825,6 +2822,65 @@ class Game {
                  }
             }
         }
+    }
+
+    handleWallCollisions(racer, intendedMovement, radius) {
+        if (intendedMovement.lengthSq() === 0) {
+            return false; // Not moving, no collision
+        }
+
+        const origin = racer.mesh.position.clone();
+        const direction = intendedMovement.clone().normalize();
+
+        this.raycaster.set(origin, direction);
+        // Check slightly further than the movement + radius to catch collisions robustly
+        this.raycaster.far = intendedMovement.length() + radius * 1.1; 
+
+        const intersects = this.raycaster.intersectObjects(this.wallMeshes, false);
+
+        if (intersects.length > 0) {
+            const collision = intersects[0];
+
+            // Check if the actual collision point of the sphere's surface is within this frame's travel
+            if (collision.distance - radius < intendedMovement.length()) {
+                // Collision will occur
+                const worldNormal = collision.face.normal.clone().transformDirection(collision.object.matrixWorld).normalize();
+
+                // 1. Adjust position to be just before impact
+                // Move along the original direction up to the collision point (minus radius and a small epsilon)
+                const distanceToImpactSurface = Math.max(0, collision.distance - radius - 0.01);
+                racer.mesh.position.copy(origin).addScaledVector(direction, distanceToImpactSurface);
+
+                // 2. Get current velocity vector
+                let currentSpeed = racer.isPlayer ? racer.speedRef.get() : racer.speed;
+                let currentRotationY = racer.isPlayer ? racer.rotationYRef.get() : racer.mesh.rotation.y;
+                
+                const velocity = new THREE.Vector3(Math.sin(currentRotationY), 0, Math.cos(currentRotationY)).multiplyScalar(currentSpeed);
+
+                // 3. Reflect velocity
+                velocity.reflect(worldNormal);
+
+                // 4. Update racer's speed and orientation, and dampen speed
+                const DAMPENING_FACTOR = 0.4; // How much speed is lost on impact
+                const newSpeed = velocity.length() * DAMPENING_FACTOR;
+                const newRotationY = Math.atan2(velocity.x, velocity.z);
+
+                if (racer.isPlayer) {
+                    racer.speedRef.set(newSpeed);
+                    racer.rotationYRef.set(newRotationY);
+                } else { // Bot
+                    racer.speed = newSpeed;
+                    racer.mesh.rotation.y = newRotationY;
+                }
+                
+                // Optional: Apply a small impulse directly away from the wall to prevent sticking
+                // racer.impulse.add(worldNormal.multiplyScalar(0.05));
+
+
+                return true; // Collision occurred and was handled
+            }
+        }
+        return false; // No collision
     }
 }
 
