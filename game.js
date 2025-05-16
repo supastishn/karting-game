@@ -3003,6 +3003,21 @@ class Game {
                          // this.useItem(bot) // fireDirection will be mostly forward by default in useGreenShell for bots
                          this.useItem(bot);
                      }
+                 } else if (bot.item === 'redShell') {
+                    // Bots use red shells if someone is ahead and not invisible
+                    const botRankInfo = this.getBotRankAndRacers(bot); // bot is the bot object
+                    let targetExistsAhead = false;
+                    if (botRankInfo.rank > 1) { // If bot is not 1st
+                        for (let i = botRankInfo.rank - 2; i >= 0; i--) { // Check racers ahead
+                            if (!botRankInfo.sortedRacers[i].obj.isInvisible) {
+                                targetExistsAhead = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (targetExistsAhead) {
+                        this.useItem(bot); // useRedShell will find the specific target
+                    }
                  } else if (bot.item === 'boo') {
                      // Use if somewhat behind or wants to steal an item
                      const botRank = this.bots.indexOf(bot) + 1; // Crude rank among bots
