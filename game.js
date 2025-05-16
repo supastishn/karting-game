@@ -257,13 +257,13 @@ class Game {
             // Load player kart model
             const loader = new THREE.OBJLoader();
             loader.load(
-                '/Shaded/base.obj', // Path to your OBJ file
+                '/Pbr/base.obj', // Changed path to Pbr/base.obj
                 (object) => {
                     this.kart = object;
 
                     // --- Apply transformations and material to the loaded kart ---
                     // These values are guesses and likely need adjustment.
-                    const desiredHeight = 0.5; // Target height for the kart
+                    const desiredHeight = 1.0; // Target height for the kart, doubled from 0.5
                     const boundingBox = new THREE.Box3().setFromObject(this.kart);
                     const currentSize = new THREE.Vector3();
                     boundingBox.getSize(currentSize);
