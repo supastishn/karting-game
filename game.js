@@ -208,7 +208,7 @@ class Game {
 
         // Lap counting system
         this.currentLap = 1;
-        this.maxLaps = 7; // Changed to 7 laps
+        this.maxLaps = 10; // Changed to 10 laps
         this.checkpointsPassed = 0;
         this.totalCheckpoints = 4; // We'll divide track into 4 sectors
         this.lastCheckpoint = -1;
@@ -219,6 +219,7 @@ class Game {
         this.bots = []; // Array to hold bot objects
         this.playerPosition = 1; // Initialize player position
         this.frameCount = 0; // Frame counter for throttling logs
+        this.raceStartTime = 0; // Timestamp for when the race actually starts (after GO!)
 
         // Wall properties
         this.wallMeshes = [];
@@ -578,6 +579,7 @@ class Game {
                 clearInterval(countdownInterval);
                 this.countdownDisplay.classList.add('hidden');
                 this.gameState = 'racing'; // Start the race
+                this.raceStartTime = performance.now(); // Record race start time
                 this.animate(); // Start the main animation loop *after* countdown
             }
         }, 1000); // 1 second interval
@@ -2261,6 +2263,9 @@ class Game {
         const totalRacers = allRacersForRanking.length;
         let availableItems;
         let chosenItem;
+
+        const elapsedRaceTimeSeconds = this.raceStartTime > 0 ? (performance.now() - this.raceStartTime) / 1000 : 0;
+        const canGetPowerfulItems = elapsedRaceTimeSeconds >= 30.0;
 
         if (rank === 1) {
             // console.log(`${racerUniqueId} is 1st, attempting to get Tier 1 item.`);
