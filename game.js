@@ -198,7 +198,7 @@ class Game {
         this.lightningShrinkDuration = 4.0;
         this.lightningShrinkScaleFactor = 0.5;
         this.lightningStunTime = 0.8; // Initial stun when hit by lightning
-        this.blueShellSpeed = 0.25; // Speed for Blue Shell flight
+        // this.blueShellSpeed = 0.25; // No longer used, speed is now dynamic (this.maxSpeed * 2.0)
         this.blueShellLifetime = 15.0; // Max time a Blue Shell stays active
         this.blueShellExplosionRadius = 10.0; // Radius of Blue Shell explosion
         this.blueShellStunTime = 3.0; // Stun duration from Blue Shell
@@ -2996,7 +2996,7 @@ class Game {
             targetRacer: targetRacer, // Store the racer object itself
             owner: firer,
             lifetime: this.blueShellLifetime,
-            speed: this.blueShellSpeed,
+            speed: this.maxSpeed * 2.0, // Blue shell speed is 2x current CC maxSpeed
             heightOffset: 5.0, // Initial height offset, will smoothly decrease
             state: 'flying_high' // Initial state: 'flying_high', 'homing', 'diving'
         });
