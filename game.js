@@ -1812,8 +1812,6 @@ class Game {
         const impulseForB = collisionNormal.clone().multiplyScalar(-magB); // Negative for opposite direction
 
         racerA.impulse.add(impulseForA);
-        racerB.impulse.add(impulseB);
-
         racerB.impulse.add(impulseForB);
 
         // Optional: Add slight speed reduction based on relative speeds or if one is boosting
