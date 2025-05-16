@@ -20,7 +20,7 @@ class Game {
     constructor(difficulty = 'easy', cc = '150cc') { // Accept difficulty and cc
         this.difficulty = difficulty; // Store difficulty
         this.cc = cc; // Store cc
-        console.log(`Starting game with difficulty: ${this.difficulty}, CC: ${this.cc}`);
+        // console.log(`Starting game with difficulty: ${this.difficulty}, CC: ${this.cc}`);
 
         const ccMultiplier = CC_MULTIPLIERS[this.cc] || 1.0;
 
@@ -226,7 +226,7 @@ class Game {
             await this.setupScene(); // setupScene will now handle kart loading
             
             // These must run after this.kart is loaded and scene is partially set up
-            this.createBots(3); 
+            this.createBots(3);
             // Store original scale for player kart after it's loaded and potentially scaled
             if (this.kart) {
                 this.kart.getWorldScale(this.originalPlayerScale);
@@ -356,7 +356,7 @@ class Game {
                     this.camera.position.copy(this.cameraTargetPosition);
                     this.camera.lookAt(this.kart.position);
                     
-                            console.log("Player kart model loaded and textured.");
+                            // console.log("Player kart model loaded and textured.");
                             resolve(); // Resolve the promise once model is loaded and scene setup
                         },
                         undefined, // onProgress for OBJ
@@ -1123,7 +1123,7 @@ class Game {
 
     // toggleRearView() { // Method no longer needed as it's hold-based
     //     this.isRearViewActive = !this.isRearViewActive;
-    //     console.log("Rear view toggled:", this.isRearViewActive);
+    //     // console.log("Rear view toggled:", this.isRearViewActive);
     // }
 
     updateSpeedometer() {
@@ -1646,22 +1646,22 @@ class Game {
 
     // Helper to calculate distance to the center of the next checkpoint
     calculateDistanceToNextCheckpoint(currentPosition, nextCheckpointIndex) {
-        const logDistance = this.frameCount % 60 === 0; // Check if we should log this frame
-        if (logDistance) console.log(`%cCalculating distance (Frame ${this.frameCount}) for pos: (${currentPosition.x.toFixed(2)}, ${currentPosition.z.toFixed(2)}) to checkpoint index: ${nextCheckpointIndex}`, 'color: cyan');
+        // const logDistance = this.frameCount % 60 === 0; // Check if we should log this frame
+        // if (logDistance) console.log(`%cCalculating distance (Frame ${this.frameCount}) for pos: (${currentPosition.x.toFixed(2)}, ${currentPosition.z.toFixed(2)}) to checkpoint index: ${nextCheckpointIndex}`, 'color: cyan');
         if (!this.checkpoints || this.checkpoints.length === 0) {
-            if (logDistance) console.log("  -> No checkpoints defined, returning Infinity");
+            // if (logDistance) console.log("  -> No checkpoints defined, returning Infinity");
             return Infinity;
         }
         const targetCheckpoint = this.checkpoints[nextCheckpointIndex];
         if (!targetCheckpoint) {
-            if (logDistance) console.log(`  -> Checkpoint index ${nextCheckpointIndex} not found, returning Infinity`);
+            // if (logDistance) console.log(`  -> Checkpoint index ${nextCheckpointIndex} not found, returning Infinity`);
             return Infinity;
         }
         // Use XZ distance for ranking to ignore hop height
         const dx = currentPosition.x - targetCheckpoint.position.x;
         const dz = currentPosition.z - targetCheckpoint.position.z;
         const distance = Math.sqrt(dx * dx + dz * dz);
-        if (logDistance) console.log(`  -> Target Checkpoint ${nextCheckpointIndex + 1} Pos: (${targetCheckpoint.position.x.toFixed(2)}, ${targetCheckpoint.position.z.toFixed(2)}), dx: ${dx.toFixed(2)}, dz: ${dz.toFixed(2)}, Distance: ${distance.toFixed(2)}`);
+        // if (logDistance) console.log(`  -> Target Checkpoint ${nextCheckpointIndex + 1} Pos: (${targetCheckpoint.position.x.toFixed(2)}, ${targetCheckpoint.position.z.toFixed(2)}), dx: ${dx.toFixed(2)}, dz: ${dz.toFixed(2)}, Distance: ${distance.toFixed(2)}`);
         return distance;
     }
 
@@ -1852,53 +1852,43 @@ class Game {
         });
 
         // Log raw racer data before sorting (throttled)
-        if (this.frameCount % 60 === 0) {
-            console.log('%c--- Scoreboard Update (Frame ' + this.frameCount + ') ---', 'font-weight: bold; color: orange;');
-            console.table(racers.map(r => ({ id: r.id, lap: r.lap, checkpoint: r.checkpointIndex, distNext: r.distanceToNext.toFixed(2) })));
-        }
+        // if (this.frameCount % 60 === 0) {
+            // console.log('%c--- Scoreboard Update (Frame ' + this.frameCount + ') ---', 'font-weight: bold; color: orange;');
+            // console.table(racers.map(r => ({ id: r.id, lap: r.lap, checkpoint: r.checkpointIndex, distNext: r.distanceToNext.toFixed(2) })));
+        // }
 
         // 2. Sort racers based on lap, then checkpoint (handling wrap-around), then distance
         racers.sort((a, b) => {
-            const logComparison = this.frameCount % 1 === 0; // Check if we should log this frame
-            //if (logComparison) console.log(`%cComparing ${a.id} vs ${b.id}`, 'color: lightblue');
+            // const logComparison = this.frameCount % 1 === 0; // Check if we should log this frame
             // 1. Sort by lap descending
             if (a.lap !== b.lap) {
-                if (logComparison) console.log(`  Lap diff: ${a.lap} vs ${b.lap} -> ${b.lap - a.lap > 0 ? 'B ahead' : 'A ahead'}`);
                 return b.lap - a.lap;
             }
 
             // 2. Laps are the same, sort by checkpoint index, handling wrap-around
-            //if (logComparison) console.log(`  Laps same (${a.lap}). Comparing checkpoints: ${a.checkpointIndex} vs ${b.checkpointIndex}`);
             const idxA = a.checkpointIndex;
             const idxB = b.checkpointIndex;
 
-            // Special case: If one is at finish (3) and other is not, the non-finish is ahead *within the same lap*
-            // This means the racer who has crossed 0, 1, or 2 is ahead of the racer still at 3 from the previous lap completion.
             if (idxA === 3 && idxB !== 3) {
-                //if (logComparison) console.log(`  Wrap-around: A is at finish (3), B is not (${idxB}) -> B ahead`);
                 return 1; // B is ahead (lower index but effectively further along this lap)
             }
             if (idxB === 3 && idxA !== 3) {
-                //if (logComparison) console.log(`  Wrap-around: B is at finish (3), A is not (${idxA}) -> A ahead`);
                 return -1; // A is ahead
             }
 
-            // Normal case (neither is 3, or both are 3): Higher checkpoint index is ahead
             if (idxA !== idxB) {
-                 //if (logComparison) console.log(`  Checkpoint diff: ${idxA} vs ${idxB} -> ${idxB - idxA > 0 ? 'B ahead' : 'A ahead'}`);
                 return idxB - idxA;
             }
 
             // 3. Checkpoints are also the same, sort by distance ascending (closer is better)
-            //if (logComparison) console.log(`  Checkpoints same (${idxA}). Comparing distance: ${a.distanceToNext.toFixed(2)} vs ${b.distanceToNext.toFixed(2)} -> ${a.distanceToNext - b.distanceToNext < 0 ? 'A ahead (closer)' : 'B ahead (closer)'}`);
             return a.distanceToNext - b.distanceToNext;
         });
 
         // Log the final sorted order (throttled)
-        if (this.frameCount % 1 === 0) {
-            console.log('%cSorted Racers (Frame ' + this.frameCount + '):', 'font-weight: bold; color: lightgreen;');
-            console.table(racers.map(r => ({ id: r.id, lap: r.lap, checkpoint: r.checkpointIndex, distNext: r.distanceToNext.toFixed(2) })));
-        }
+        // if (this.frameCount % 1 === 0) {
+            // console.log('%cSorted Racers (Frame ' + this.frameCount + '):', 'font-weight: bold; color: lightgreen;');
+            // console.table(racers.map(r => ({ id: r.id, lap: r.lap, checkpoint: r.checkpointIndex, distNext: r.distanceToNext.toFixed(2) })));
+        // }
 
 
         // 3. Find player's position
@@ -1982,25 +1972,24 @@ class Game {
         let chosenItem;
 
         if (rank === 1) {
-            console.log(`${racerUniqueId} is 1st, attempting to get Tier 1 item.`);
+            // console.log(`${racerUniqueId} is 1st, attempting to get Tier 1 item.`);
             const randRoll = randomFunction(); // Get a random number between 0 and 1
             if (randRoll < 0.80) { // 80% chance for banana
                 chosenItem = 'banana';
             } else { // 20% chance for green shell
                 chosenItem = 'greenShell';
             }
-            // availableItems will not be used directly for rank 1, chosenItem is set directly.
         } else if (rank === totalRacers) { // Last place
             availableItems = ['boo', 'lightningBolt', 'mushroom'];
-            console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 (Last Place) items.`);
+            // console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 (Last Place) items.`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         } else if (rank > Math.ceil(totalRacers / 2)) { // Back half of the pack (but not 1st or last)
             availableItems = ['mushroom', 'boo', 'fakeItemBox'];
-            console.log(`${racerUniqueId} is ${rank} (back half), gets Tier 3 items.`);
+            // console.log(`${racerUniqueId} is ${rank} (back half), gets Tier 3 items.`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         } else { // Front half of the pack (but not 1st or last)
             availableItems = ['mushroom', 'fakeItemBox', 'greenShell'];
-            console.log(`${racerUniqueId} is ${rank} (front half), gets Tier 2 items.`);
+            // console.log(`${racerUniqueId} is ${rank} (front half), gets Tier 2 items.`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         }
         
@@ -2016,13 +2005,13 @@ class Game {
         if (isPlayer) {
             if (this.playerItem === null) {
                 this.playerItem = chosenItem;
-                console.log(`Player (Rank ${rank}) got item: ${this.playerItem}`);
+                // console.log(`Player (Rank ${rank}) got item: ${this.playerItem}`);
                 this.updateItemDisplay();
             }
         } else { // It's a bot
              if (racer.item === null) {
                  racer.item = chosenItem;
-                 console.log(`Bot ${this.bots.indexOf(racer)} (Rank ${rank}) got item: ${racer.item}`);
+                 // console.log(`Bot ${this.bots.indexOf(racer)} (Rank ${rank}) got item: ${racer.item}`);
              }
         }
     }
@@ -2033,7 +2022,12 @@ class Game {
 
         if (!itemToUse) return; // No item to use
 
-        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used ${itemToUse}`);
+        if (itemToUse !== 'boo') { // Keep Boo logs, remove others
+            // console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used ${itemToUse}`);
+        } else {
+            console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used ${itemToUse}`);
+        }
+
 
         if (itemToUse === 'banana') {
             this.useBanana(racer);
@@ -2090,7 +2084,7 @@ class Game {
 
     applyBananaHit(racer) {
         const isPlayer = (racer.mesh === this.kart);
-        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit a banana!`);
+        // console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit a banana!`);
 
         if (isPlayer) {
             if (this.playerIsInvisible) return; // Immune if Boo is active
@@ -2149,7 +2143,7 @@ class Game {
 
     applyGreenShellHit(racer) {
         const isPlayer = (racer.mesh === this.kart);
-        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit by a Green Shell!`);
+        // console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit by a Green Shell!`);
 
         if (isPlayer) {
             if (this.playerIsInvisible) return;
@@ -2200,7 +2194,7 @@ class Game {
 
     applyFakeItemBoxHit(racer) {
         const isPlayer = (racer.mesh === this.kart);
-        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit a Fake Item Box!`);
+        // console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} hit a Fake Item Box!`);
         if (isPlayer) {
             if (this.playerIsInvisible) return;
             this.playerStunDuration = this.fakeItemBoxStunTime;
@@ -2215,7 +2209,7 @@ class Game {
     // --- Boo (Ghost) Logic ---
     useBoo(racer) {
         const isPlayer = (racer.mesh === this.kart);
-        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used Boo!`);
+        console.log(`${isPlayer ? 'Player' : 'Bot ' + this.bots.indexOf(racer)} used Boo!`); // KEEP THIS LOG
 
         if (isPlayer) {
             this.playerIsInvisible = true;
@@ -2254,6 +2248,9 @@ class Game {
     stealItemWithBoo(thief) {
         let racersToTarget = [];
         let itemWasStolen = false;
+        const thiefIsPlayer = thief.mesh === this.kart;
+        console.log(`Boo logic: Thief is ${thiefIsPlayer ? 'Player' : `Bot ${this.bots.indexOf(thief)}`}`);
+
 
         if (thief.mesh === this.kart) { // Player is the thief
             racersToTarget = this.bots.filter(b => b.item !== null && !b.isInvisible);
@@ -2263,6 +2260,21 @@ class Game {
             }
             racersToTarget.push(...this.bots.filter(b => b !== thief && b.item !== null && !b.isInvisible).map(b => ({racerObj: b, itemHolder: 'bot'})));
         }
+        
+        const targetDetails = racersToTarget.map(t_or_w => {
+            if (thief.mesh === this.kart) { 
+                return `Bot ${this.bots.indexOf(t_or_w)} (Item: ${t_or_w.item})`;
+            } else { 
+                const itemHolder = t_or_w.itemHolder;
+                if (itemHolder === 'player') {
+                    return `Player (Item: ${this.playerItem})`;
+                } else { 
+                    const botVictim = t_or_w.racerObj;
+                    return `Bot ${this.bots.indexOf(botVictim)} (Item: ${botVictim.item})`;
+                }
+            }
+        });
+        console.log("Boo logic: Potential targets:", targetDetails.length > 0 ? targetDetails : "None");
 
         if (racersToTarget.length > 0) {
             const selectedTargetData = racersToTarget[Math.floor(this.playerRandom() * racersToTarget.length)];
@@ -2324,18 +2336,18 @@ class Game {
 
     // --- Lightning Bolt Logic ---
     useLightningBolt(firer) { // Firer is the racer who used the lightning
-        console.log(`${firer.mesh === this.kart ? 'Player' : 'Bot ' + this.bots.indexOf(firer)} used Lightning Bolt!`);
+        // console.log(`${firer.mesh === this.kart ? 'Player' : 'Bot ' + this.bots.indexOf(firer)} used Lightning Bolt!`);
 
         // Affect player if not the firer
         if (firer.mesh !== this.kart) {
             if (!this.playerIsInvisible) { // Boo immunity
-                console.log("Player struck by lightning!");
+                // console.log("Player struck by lightning!");
                 this.playerShrinkDuration = this.lightningShrinkDuration;
                 this.playerStunDuration = Math.max(this.playerStunDuration, this.lightningStunTime); // Apply stun
                 this.speed *= 0.4; // Reduce speed significantly
                 this.kart.scale.set(this.originalPlayerScale.x * this.lightningShrinkScaleFactor, this.originalPlayerScale.y * this.lightningShrinkScaleFactor, this.originalPlayerScale.z * this.lightningShrinkScaleFactor);
                 if (this.playerItem) { // Lose item
-                    console.log(`Player lost item: ${this.playerItem}`);
+                    // console.log(`Player lost item: ${this.playerItem}`);
                     this.playerItem = null;
                     this.updateItemDisplay();
                 }
@@ -2346,13 +2358,13 @@ class Game {
         this.bots.forEach((bot, index) => {
             if (firer !== bot) { // Don't affect the bot that fired it
                 if (!bot.isInvisible) { // Boo immunity
-                    console.log(`Bot ${index} struck by lightning!`);
+                    // console.log(`Bot ${index} struck by lightning!`);
                     bot.shrinkDuration = this.lightningShrinkDuration;
                     bot.stunDuration = Math.max(bot.stunDuration, this.lightningStunTime);
                     bot.speed *= 0.4;
                     bot.mesh.scale.set(bot.originalScale.x * this.lightningShrinkScaleFactor, bot.originalScale.y * this.lightningShrinkScaleFactor, bot.originalScale.z * this.lightningShrinkScaleFactor);
                     if (bot.item) { // Lose item
-                        console.log(`Bot ${index} lost item: ${bot.item}`);
+                        // console.log(`Bot ${index} lost item: ${bot.item}`);
                         bot.item = null;
                     }
                 }
@@ -2526,7 +2538,7 @@ class Game {
                 bot.isDrifting = true;
                 bot.driftTime = 0;
                 bot.miniTurboStage = 0;
-                console.log(`Bot ${this.bots.indexOf(bot)} started drifting`); // Uncommented log
+                // console.log(`Bot ${this.bots.indexOf(bot)} started drifting`);
             } else if (bot.isDrifting && Math.abs(angleDifference) < driftTurnThreshold * 0.8) { // Stop if angle straightens out a bit
                 // Stop drifting - check for boost release
                 bot.isDrifting = false;
@@ -2534,7 +2546,7 @@ class Game {
                     bot.boosting = true;
                     // Use player's boost durations for now
                     bot.boostTime = this.miniTurboBoostDurations[bot.miniTurboStage - 1];
-                    console.log(`Bot ${this.bots.indexOf(bot)} released boost stage ${bot.miniTurboStage}`); // Uncommented log
+                    // console.log(`Bot ${this.bots.indexOf(bot)} released boost stage ${bot.miniTurboStage}`);
                 }
                 bot.driftTime = 0;
                 bot.miniTurboStage = 0;
@@ -2573,7 +2585,7 @@ class Game {
                 bot.boostTime -= deltaTime;
                 if (bot.boostTime <= 0) {
                     bot.boosting = false;
-                    console.log(`Bot ${this.bots.indexOf(bot)} boost ended`); // Uncommented log
+                    // console.log(`Bot ${this.bots.indexOf(bot)} boost ended`);
                 }
             }
 
@@ -2699,7 +2711,7 @@ class Game {
                             // Check for lap completion
                             if (i === 3) { // Index 3 is the start/finish line
                                 bot.lap++;
-                                console.log(`Bot ${botIndex} completed lap ${bot.lap}`);
+                                // console.log(`Bot ${botIndex} completed lap ${bot.lap}`);
                             }
                             
                             break; // Stop checking other checkpoints after a valid crossing
