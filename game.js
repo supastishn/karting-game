@@ -179,7 +179,7 @@ class Game {
         this.greenShellLifetime = 7.0; // seconds
         this.greenShellStunTime = 1.0;
         this.redShellStunTime = 1.2; // Red shells might stun slightly longer
-        this.redShellSpeed = 0.25; // Red shells are a bit slower but home in
+        // this.redShellSpeed = 0.25; // Red shell speed will now be dynamic, like green shells
         this.redShellLifetime = 8.0; // seconds
         this.fakeItemBoxStunTime = 0.5; // Shorter stun
         this.booDuration = 5.0;
@@ -2279,7 +2279,7 @@ class Game {
             owner: racer, 
             target: target, // Store the racer object for the target
             lifetime: this.redShellLifetime,
-            speed: this.redShellSpeed 
+            speed: this.maxSpeed * 1.5 // Same speed as green shells
         });
     }
 
