@@ -1911,21 +1911,24 @@ class Game {
             // availableItems will not be used directly for rank 1, chosenItem is set directly.
         } else if (rank === totalRacers) { // Last place
             availableItems = ['boo', 'lightningBolt', 'mushroom'];
-            console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 items.`);
+            console.log(`${racerUniqueId} is ${rank} (last), gets Tier 4 (Last Place) items.`);
             chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
-        } else if (rank > Math.ceil(totalRacers / 2)) { // Back half of the pack (but not last)
+        } else if (rank > Math.ceil(totalRacers / 2)) { // Back half of the pack (but not 1st or last)
             availableItems = ['mushroom', 'boo', 'fakeItemBox'];
             console.log(`${racerUniqueId} is ${rank} (back half), gets Tier 3 items.`);
-        } else { // Front half of the pack (but not first)
+            chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
+        } else { // Front half of the pack (but not 1st or last)
             availableItems = ['mushroom', 'fakeItemBox', 'greenShell'];
             console.log(`${racerUniqueId} is ${rank} (front half), gets Tier 2 items.`);
+            chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
         }
         
-        if (rank !== 1 && (!availableItems || availableItems.length === 0)) { // Fallback for other ranks
-            availableItems = ['mushroom']; 
-            chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)];
-        } else if (rank !== 1) { // For ranks other than 1, chosenItem is already set from availableItems
-            // chosenItem = availableItems[Math.floor(randomFunction() * availableItems.length)]; // This line is now covered above or not needed for rank 1
+        // Fallback if chosenItem somehow didn't get set (e.g., an item tier list was empty or logic error)
+        if (!chosenItem) {
+            // This case should ideally not be hit if all tiers are defined and rank logic is correct.
+            // It would apply if, for example, rank 1 logic failed to set chosenItem.
+            console.warn(`ChosenItem was not set for rank ${rank}. Defaulting to mushroom.`);
+            chosenItem = 'mushroom';
         }
 
 
